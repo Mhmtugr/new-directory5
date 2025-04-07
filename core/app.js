@@ -17,6 +17,9 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // Global olarak loadScript fonksiyonunu aç
 window.loadScript = loadScript;
+window.enableDemoMode = enableDemoMode;
+window.showMainApp = showMainApp;
+window.showLogin = showLogin;
 window.initApp = initApp;
 
 // Global değişkenler ve yapılandırma
@@ -74,13 +77,13 @@ async function initializeApplication() {
             showDemoModeNotification();
             
             // Mock Firebase ve diğer bağımlılıkları yükle
-            await loadScript('core/mock-firebase.js');
+            await loadScript('js/mock-firebase.js');
         } else {
             console.log("Normal mod. Firebase ve bağımlılıkları yükleniyor...");
         }
         
         // Uyumluluk kontrolü ve diğer bağımlılıkları yükle
-        await loadScript('core/compat-check.js');
+        await loadScript('js/compat-check.js');
         
         // Firebase SDK'yı CDN'den yükle
         if (!CONFIG.isDemo && !window.firebase) {
@@ -88,51 +91,23 @@ async function initializeApplication() {
         }
         
         // Ana yapılandırma ve bileşenleri yükle
-        await loadScript('core/firebase-config.js');
-        await loadScript('core/main.js');
-        await loadScript('core/database.js');
-        await loadScript('core/integration.js');
+        await loadScript('js/firebase-config.js');
+        await loadScript('js/main.js');
+        await loadScript('js/auth.js');
         
-        // Utils modüllerini yükle
+        // Fonksiyonel bileşenleri paralel olarak yükle
         await Promise.all([
-            loadScript('utils/event-bus.js'),
-            loadScript('utils/logger.js')
+            loadScript('js/dashboard.js'),
+            loadScript('js/orders.js'),
+            loadScript('js/purchasing.js'),
+            loadScript('js/production.js')
         ]);
         
-        // Service modüllerini yükle
+        // İkincil bileşenleri paralel olarak yükle
         await Promise.all([
-            loadScript('services/api-service.js'),
-            loadScript('services/erp-service.js'),
-            loadScript('services/ai-service.js')
-        ]);
-        
-        // Ana modülleri paralel olarak yükle
-        await Promise.all([
-            loadScript('modules/dashboard/dashboard.js'),
-            loadScript('modules/orders/orders.js'),
-            loadScript('modules/orders/order-creation.js'),
-            loadScript('modules/purchasing/purchasing.js'),
-            loadScript('modules/production/production.js'),
-            loadScript('modules/production/production-planning.js'),
-            loadScript('modules/inventory/materials.js'),
-            loadScript('modules/inventory/stock-management.js')
-        ]);
-        
-        // AI ve chatbot bileşenlerini yükle
-        await Promise.all([
-            loadScript('modules/ai/main.js'),
-            loadScript('modules/ai/chatbot.js'),
-            loadScript('modules/ai/ai-analytics.js'),
-            loadScript('modules/ai/data-viz.js'),
-            loadScript('modules/ai/ai-integration.js'),
-            loadScript('modules/ai/advanced-ai.js')
-        ]);
-        
-        // UI bileşenlerini yükle
-        await Promise.all([
-            loadScript('components/charts.js'),
-            loadScript('components/forms.js'),
-            loadScript('components/ui-components.js')
+            loadScript('js/chatbot.js'),
+            loadScript('js/ai-analytics.js'),
+            loadScript('js/data-viz.js')
         ]);
         
         // Scriptlerin yüklenme durumunu güncelle
@@ -153,7 +128,7 @@ async function initializeApplication() {
         if (!CONFIG.isDemo) {
             console.warn('Demo moda geçiliyor...');
             CONFIG.isDemo = true;
-            await loadScript('core/mock-firebase.js');
+            showDemoModeNotification();
             return initializeApplication();
         }
         
@@ -166,12 +141,6 @@ async function initializeApplication() {
  */
 async function startApp() {
     try {
-        // ModuleIntegration modülünü başlat (yeni eklenen)
-        if (window.ModuleIntegration && typeof window.ModuleIntegration.init === 'function') {
-            console.log("ModuleIntegration başlatılıyor...");
-            window.ModuleIntegration.init();
-        }
-        
         // InitApp fonksiyonu var mı kontrolü
         if (typeof initApp === 'function') {
             console.log("initApp fonksiyonu bulundu ve çağrılıyor...");
@@ -190,24 +159,18 @@ async function startApp() {
                         email: 'demo@mehmetendustriyel.com',
                         displayName: 'Demo Kullanıcı'
                     };
-                    appState.isUserLoggedIn = true; // Durumu güncelle
                 }
                 
-                // Ana uygulamayı göster (main.js'deki fonksiyonu kullan)
-                if (typeof window.showMainApp === 'function') {
-                    window.showMainApp();
-                } else {
-                    console.error("showMainApp fonksiyonu main.js'de bulunamadı!");
-                    // Fallback: Direkt DOM manipülasyonu
-                    document.getElementById('main-app').style.display = 'block';
-                    document.getElementById('login-page').style.display = 'none';
-                }
-
-                // Dashboard'u yükle (main.js'deki fonksiyonu kullan)
-                if (typeof window.showPage === 'function') {
-                   window.showPage('dashboard');
-                } else {
-                     console.error("showPage fonksiyonu main.js'de bulunamadı!");
+                // Ana uygulamayı göster
+                showMainApp();
+                
+                // Dashboard verilerini yükle
+                if (typeof loadDashboardData === 'function') {
+                    loadDashboardData();
+                } else if (typeof loadDashboardDataKOD1 === 'function') {
+                    loadDashboardDataKOD1();
+                } else if (typeof loadDashboardDataKOD2 === 'function') {
+                    loadDashboardDataKOD2();
                 }
             } else {
                 // Firebase ile otomatik kimlik doğrulama dinleyicisi ekle
@@ -235,22 +198,13 @@ async function startApp() {
                     // Firebase yok - demo moda geç
                     console.warn("Firebase bulunamadı, demo moda geçiliyor");
                     CONFIG.isDemo = true;
-                    window.currentUser = {
-                        uid: 'demo-user-1',
-                        email: 'demo@mehmetendustriyel.com',
-                        displayName: 'Demo Kullanıcı'
-                    };
-                    showMainApp();
-                    
-                    // Demo verilerini yükle
-                    if (typeof loadDemoDashboardData === 'function') {
-                        loadDemoDashboardData();
-                    }
+                    showDemoModeNotification();
+                    return startApp();
                 }
             }
         }
     } catch (error) {
-        console.error('Uygulama başlatma sonrası hata:', error);
+        console.error("Uygulama başlatma hatası:", error);
         throw error;
     }
 }
@@ -499,55 +453,527 @@ function promptForDemoMode(error) {
 }
 
 /**
- * Script yükleyici
- * @param {string} url - Script URL'si
- * @returns {Promise} - Yükleme Promise'i
+ * Demo modunu etkinleştir
+ */
+function enableDemoMode() {
+    console.log("Demo modu etkinleştiriliyor...");
+    
+    // Demo modunu etkinleştir
+    CONFIG.isDemo = true;
+    
+    // Yükleme göstergesini güncelle ve kaldır
+    const loadingElement = document.getElementById('initial-loading');
+    if (loadingElement) {
+        const loadingMessage = document.getElementById('loading-message');
+        if (loadingMessage) {
+            loadingMessage.textContent = 'Demo moduna geçiliyor...';
+            loadingMessage.style.color = '#10b981';
+        }
+        
+        setTimeout(() => {
+            loadingElement.style.display = 'none';
+        }, 1000);
+    }
+    
+    // Demo bildirimini göster
+    showDemoModeNotification();
+    
+    // Kullanıcı bilgilerini ayarla
+    window.currentUser = {
+        uid: 'demo-user-1',
+        email: 'demo@mehmetendustriyel.com',
+        displayName: 'Demo Kullanıcı'
+    };
+    
+    try {
+        // Tüm login sayfalarını gizle
+        const loginPage = document.getElementById('login-page');
+        if (loginPage) {
+            loginPage.style.display = 'none';
+        }
+        
+        // Ana uygulamayı göster
+        const mainApp = document.getElementById('main-app');
+        const mainContent = document.querySelector('.main-content');
+        const sidebar = document.querySelector('.sidebar');
+        
+        if (mainApp) {
+            mainApp.style.display = 'block';
+        } 
+        
+        if (mainContent) {
+            mainContent.style.display = 'block';
+        }
+        
+        if (sidebar) {
+            sidebar.style.display = 'block';
+        }
+        
+        // Dashboard'ı göster
+        const dashboardTab = document.querySelector('a[href="#dashboard"]');
+        if (dashboardTab) {
+            dashboardTab.click();
+        }
+        
+        // Dashboard verilerini yükle (varsa)
+        if (typeof loadDashboardData === 'function') {
+            loadDashboardData();
+        }
+        
+        // UI'ı tekrar hazırla
+        if (typeof setupUI === 'function') {
+            setupUI();
+        }
+        
+        // Sayfa yüklendiği olayını tetikle
+        document.dispatchEvent(new Event('appReady'));
+        
+        console.log("Demo modu başarıyla etkinleştirildi");
+        return true;
+    } catch (error) {
+        console.error("Demo modu etkinleştirilirken hata:", error);
+        
+        // Yine de ana uygulamayı göstermeye çalış
+        const mainContent = document.querySelector('.main-content');
+        if (mainContent) {
+            mainContent.style.display = 'block';
+        }
+        
+        return false;
+    }
+}
+
+/**
+ * Yardımcı fonksiyonlar
+ */
+
+// Ana uygulamayı göster (login sayfasını gizle)
+function showMainApp() {
+    // Tüm login sayfalarını gizle
+    const loginPages = [
+        document.getElementById('login-page'), 
+        document.getElementById('register-page'), 
+        document.getElementById('forgot-password-page')
+    ];
+    
+    loginPages.forEach(page => {
+        if (page) page.style.display = 'none';
+    });
+    
+    // Yükleme göstergesini gizle
+    hideInitialLoadingIndicator();
+    
+    // Ana uygulamayı göster
+    const mainApp = document.getElementById('main-app');
+    if (mainApp) {
+        mainApp.style.display = 'block';
+    } else {
+        // main-app bulunamadı, .main-content veya .sidebar elementlerini aramayı dene
+        const mainContent = document.querySelector('.main-content');
+        if (mainContent) {
+            mainContent.style.display = 'block';
+        }
+        
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar) {
+            sidebar.style.display = 'block';
+        }
+        
+        // İlk dashboard sayfasını göster
+        const dashboardPage = document.getElementById('dashboard-page') || document.querySelector('[data-page="dashboard"]');
+        if (dashboardPage) {
+            dashboardPage.style.display = 'block';
+        }
+    }
+    
+    // İlgili event'i tetikle
+    const event = new CustomEvent('appReady');
+    document.dispatchEvent(event);
+}
+
+// Login sayfasını göster (varsa)
+function showLogin() {
+    try {
+        // Ana uygulamayı gizle
+        const mainApp = document.getElementById('main-app') || document.querySelector('.main-content');
+        if (mainApp) {
+            mainApp.style.display = 'none';
+        }
+        
+        // Yükleme göstergesini kaldır
+        hideInitialLoadingIndicator();
+        
+        // Login sayfasını göster
+        const loginPage = document.getElementById('login-page');
+        if (loginPage) {
+            loginPage.style.display = 'flex';
+        } else {
+            // Login sayfası yoksa, basit bir login formu oluştur
+            const container = document.createElement('div');
+            container.id = 'login-page';
+            container.style.display = 'flex';
+            container.style.flexDirection = 'column';
+            container.style.alignItems = 'center';
+            container.style.justifyContent = 'center';
+            container.style.minHeight = '100vh';
+            container.style.backgroundColor = '#f8fafc';
+            
+            container.innerHTML = `
+                <div style="max-width: 400px; width: 100%; padding: 2rem; background-color: white; border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                    <div style="text-align: center; margin-bottom: 2rem;">
+                        <div style="font-size: 1.5rem; font-weight: 600; color: #1e40af; margin-bottom: 0.5rem;">MehmetEndüstriyelTakip</div>
+                        <div style="font-size: 0.875rem; color: #64748b;">Orta Gerilim Hücre İmalat Takip Sistemi</div>
+                    </div>
+                    
+                    <form id="login-form" style="display: flex; flex-direction: column; gap: 1rem;">
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <label for="email" style="font-size: 0.875rem; font-weight: 500; color: #334155;">E-posta</label>
+                            <input type="email" id="email" placeholder="E-posta adresiniz" style="padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 0.25rem;">
+                        </div>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <label for="password" style="font-size: 0.875rem; font-weight: 500; color: #334155;">Parola</label>
+                            <input type="password" id="password" placeholder="Parolanız" style="padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 0.25rem;">
+                        </div>
+                        
+                        <button type="button" id="login-button" style="margin-top: 1rem; padding: 0.75rem 1rem; background-color: #1e40af; color: white; border: none; border-radius: 0.25rem; font-weight: 500; cursor: pointer;">Giriş Yap</button>
+                        
+                        <div style="text-align: center; margin-top: 1rem;">
+                            <a href="#" id="demo-mode-button" style="color: #1e40af; text-decoration: none; font-size: 0.875rem;">Demo modunda devam et</a>
+                        </div>
+                    </form>
+                </div>
+            `;
+            
+            document.body.appendChild(container);
+            
+            // Login butonunu etkinleştir
+            const loginButton = document.getElementById('login-button');
+            if (loginButton) {
+                loginButton.addEventListener('click', function() {
+                    const email = document.getElementById('email').value;
+                    const password = document.getElementById('password').value;
+                    
+                    if (email && password) {
+                        // Gerçek uygulamada Firebase ile login işlemi
+                        if (window.firebase && window.firebase.auth) {
+                            window.firebase.auth().signInWithEmailAndPassword(email, password)
+                                .then((userCredential) => {
+                                    // Login başarılı
+                                    window.currentUser = userCredential.user;
+                                    showMainApp();
+                                })
+                                .catch((error) => {
+                                    alert(`Giriş yapılamadı: ${error.message}`);
+                                });
+                        } else {
+                            // Firebase yoksa demo moda geç
+                            enableDemoMode();
+                        }
+                    } else {
+                        alert('Lütfen e-posta ve parola alanlarını doldurunuz.');
+                    }
+                });
+            }
+            
+            // Demo modu butonunu etkinleştir
+            const demoButton = document.getElementById('demo-mode-button');
+            if (demoButton) {
+                demoButton.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    enableDemoMode();
+                });
+            }
+        }
+        
+        // Enter tuşuyla form gönderimi
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && document.getElementById('login-page').style.display !== 'none') {
+                const loginButton = document.getElementById('login-button');
+                if (loginButton) {
+                    loginButton.click();
+                }
+            }
+        });
+    } catch (error) {
+        console.error("Login sayfası gösterilirken hata:", error);
+        // Hata durumunda demo moda geç
+        enableDemoMode();
+    }
+}
+
+// Uygulama önyükleme ve başlatma kodu
+async function initApp() {
+    console.log("Uygulama başlatılıyor...");
+    
+    try {
+        // Temel kütüphaneleri yükle
+        await loadDependencies().catch(err => {
+            console.error("Bağımlılıklar yüklenirken hata:", err);
+            // Bağımlılıklar yüklenemese bile devam et
+        });
+        
+        // Modülleri yükle
+        try {
+            await loadModules();
+        } catch (moduleError) {
+            console.error("Modüller yüklenirken hata:", moduleError);
+            // Modüller yüklenemese bile devam et
+        }
+        
+        // UI'ı hazırla
+        setupUI();
+        
+        // Verileri yükle
+        try {
+            await loadInitialData();
+        } catch (dataError) {
+            console.error("Veriler yüklenirken hata:", dataError);
+            // Veri hataları kritik değil, devam et
+        }
+        
+        // Ana uygulamayı göster
+        showMainApp();
+        
+        console.log("Uygulama başarıyla yüklendi.");
+        return true;
+    } catch (error) {
+        console.error("Uygulama başlatma hatası:", error);
+        showErrorPage(error);
+        
+        // Otomatik olarak 3 saniye sonra demo moda geç
+        setTimeout(() => {
+            enableDemoMode();
+        }, 3000);
+        
+        return false;
+    }
+}
+
+// Bağımlılıkları yükle
+async function loadDependencies() {
+    try {
+        console.log("Temel bağımlılıklar yükleniyor...");
+        
+        // Mock veritabanı hizmetlerini yükle (gerçek uygulamada gerek olmayabilir)
+        if (!window.firebase) {
+            await loadScript('core/mock-firebase.js');
+        }
+        
+        // Uyumluluk kontrolü
+        if (!await checkCompatibility()) {
+            throw new Error("Tarayıcı uyumsuzluğu: Tarayıcınız uygulamanın gerektirdiği özellikleri desteklemiyor.");
+        }
+        
+        // Temel hizmetleri yükle
+        return true;
+    } catch (error) {
+        console.error("Bağımlılıklar yüklenirken hata:", error);
+        throw error;
+    }
+}
+
+// UI modüllerini yükle
+async function loadModules() {
+    try {
+        console.log("Modüller yükleniyor...");
+        
+        // Herhangi bir eksik modülü yükle
+        const missingModules = [];
+        
+        // Dashboard modülü kontrolü
+        if (typeof window.loadDashboardData !== 'function') {
+            if (document.querySelector('script[src*="dashboard.js"]')) {
+                console.log("Dashboard modülü script etiketi var ancak yüklenemedi");
+            } else {
+                console.log("Dashboard modülü script etiketi bulunamadı, ekleniyor");
+                missingModules.push(loadScript('modules/dashboard/dashboard.js'));
+            }
+        }
+        
+        // Orders modülü kontrolü
+        if (typeof window.loadOrdersData !== 'function') {
+            if (document.querySelector('script[src*="orders.js"]')) {
+                console.log("Orders modülü script etiketi var ancak yüklenemedi");
+            } else {
+                console.log("Orders modülü script etiketi bulunamadı, ekleniyor");
+                missingModules.push(loadScript('modules/orders/orders.js'));
+            }
+        }
+        
+        // Tüm eksik modüllerin yüklenmesini bekle
+        if (missingModules.length > 0) {
+            await Promise.all(missingModules);
+        }
+        
+        return true;
+    } catch (error) {
+        console.error("Modüller yüklenirken hata:", error);
+        console.log("Hata oluştu ancak demo mod ile devam edilecek");
+        return true; // Hata olsa bile devam et
+    }
+}
+
+// Uyumluluk kontrolü
+async function checkCompatibility() {
+    // Temel uyumluluk kontrolü
+    if (!window.localStorage || !window.indexedDB || !window.fetch) {
+        return false;
+    }
+    
+    // PWA desteği kontrolü
+    if ('serviceWorker' in navigator) {
+        try {
+            await navigator.serviceWorker.register('/service-worker.js');
+            console.log('Service Worker başarıyla kaydedildi');
+        } catch (error) {
+            console.warn('Service Worker kaydı başarısız:', error);
+            // Service worker hatası uygulamayı engellemez
+        }
+    }
+    
+    return true;
+}
+
+// Hata sayfası göster
+function showErrorPage(error) {
+    const mainContent = document.querySelector('.main-content');
+    if (!mainContent) return;
+    
+    mainContent.innerHTML = `
+        <div class="error-container">
+            <div class="error-icon">
+                <i class="bi bi-exclamation-triangle"></i>
+            </div>
+            <h2>Uygulama Başlatılamadı</h2>
+            <p>${error.message || 'Bilinmeyen bir hata oluştu.'}</p>
+            <button class="btn btn-primary" onclick="window.location.reload()">Yeniden Dene</button>
+        </div>
+    `;
+}
+
+// UI kurulumu 
+function setupUI() {
+    // Sidebar menü işlevselliği
+    const sidebarLinks = document.querySelectorAll('.sidebar .nav-link');
+    sidebarLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            // Aktif link sınıfını güncelle
+            sidebarLinks.forEach(l => l.classList.remove('active'));
+            this.classList.add('active');
+            
+            // İlgili içeriği göster (basit bir router)
+            const targetId = this.getAttribute('data-target');
+            if (targetId) {
+                document.querySelectorAll('.page-content').forEach(page => {
+                    page.style.display = 'none';
+                });
+                
+                const targetPage = document.getElementById(targetId);
+                if (targetPage) {
+                    targetPage.style.display = 'block';
+                }
+            }
+        });
+    });
+    
+    // İlk sayfa olarak gösterge panelini göster
+    const dashboardLink = document.querySelector('.sidebar .nav-link[data-target="dashboard-page"]');
+    if (dashboardLink) {
+        dashboardLink.click();
+    }
+}
+
+// Uygulamayı başlat
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
+
+export { loadScript };
+
+// Verileri yükle
+async function loadInitialData() {
+    try {
+        console.log("Başlangıç verileri yükleniyor...");
+        
+        // Dashboard için verileri yükle
+        if (typeof window.loadDashboardData === 'function') {
+            await window.loadDashboardData();
+        }
+        
+        // Sipariş verilerini yükle
+        if (typeof window.loadOrdersData === 'function') {
+            await window.loadOrdersData();
+        }
+        
+        // Üretim verilerini yükle
+        if (typeof window.loadProductionData === 'function') {
+            await window.loadProductionData();
+        }
+        
+        return true;
+    } catch (error) {
+        console.error("Veriler yüklenirken hata:", error);
+        // Kritik bir hata değilse devam et
+        return true;
+    }
+}
+
+/**
+ * JavaScript dosyası yükleme fonksiyonu (lokal)
  */
 function loadScript(url) {
     return new Promise((resolve, reject) => {
-        // Script daha önce yüklenmişse tekrar yükleme
-        const existingScript = document.querySelector(`script[src="${url}"]`);
-        if (existingScript) {
-            console.log(`Script zaten yüklenmiş: ${url}`);
-            return resolve();
-        }
+        console.log(`Script yükleniyor: ${url}`);
         
-        // Yeni script elemanı oluştur
-        const script = document.createElement('script');
-        script.src = url;
-        script.async = true;
-        
-        // Yükleme timeout'u
-        const timeoutId = setTimeout(() => {
-            console.error(`Script yükleme zaman aşımı: ${url}`);
-            reject(new Error(`Script yükleme zaman aşımı: ${url}`));
-        }, CONFIG.scriptLoadTimeout);
-        
-        // Yükleme başarılı
-        script.onload = () => {
-            console.log(`Script başarıyla yüklendi: ${url}`);
-            clearTimeout(timeoutId);
-            resolve();
-        };
-        
-        // Yükleme hatası
-        script.onerror = (error) => {
-            console.error(`Script yükleme hatası: ${url}`, error);
-            clearTimeout(timeoutId);
+        try {
+            const script = document.createElement('script');
+            script.src = url;
+            script.async = true;
             
-            // Alternatif yol deneme (başında / olmayan)
-            if (url.startsWith('/')) {
-                const altUrl = url.substring(1);
-                console.log(`Alternatif URL deneniyor: ${altUrl}`);
-                loadScript(altUrl)
-                    .then(resolve)
-                    .catch(reject);
-            } else {
-                reject(new Error(`Script yüklenemedi: ${url}`));
-            }
-        };
-        
-        // Scripti sayfaya ekle
-        document.head.appendChild(script);
+            // Yükleme zaman aşımı kontrolü
+            const timeoutId = setTimeout(() => {
+                console.warn(`Script yükleme zaman aşımı: ${url}`);
+                reject(new Error(`Script yükleme zaman aşımı: ${url}`));
+            }, 10000); // 10 saniye
+            
+            script.onload = () => {
+                clearTimeout(timeoutId);
+                console.log(`Script başarıyla yüklendi: ${url}`);
+                resolve();
+            };
+            
+            script.onerror = (error) => {
+                clearTimeout(timeoutId);
+                console.error(`Script yüklenirken hata: ${url}`, error);
+                
+                // Hata durumunda alternatif URL dene
+                const alternativeUrl = url.startsWith('/') ? url.substring(1) : '/' + url;
+                console.log(`Alternatif URL deneniyor: ${alternativeUrl}`);
+                
+                const alternativeScript = document.createElement('script');
+                alternativeScript.src = alternativeUrl;
+                alternativeScript.async = true;
+                
+                alternativeScript.onload = () => {
+                    console.log(`Alternatif script başarıyla yüklendi: ${alternativeUrl}`);
+                    resolve();
+                };
+                
+                alternativeScript.onerror = () => {
+                    console.error(`Alternatif script de yüklenemedi: ${alternativeUrl}`);
+                    reject(new Error(`Script yüklenemedi: ${url} ve ${alternativeUrl}`));
+                };
+                
+                document.head.appendChild(alternativeScript);
+            };
+            
+            document.head.appendChild(script);
+        } catch (error) {
+            console.error(`Script yükleme isteği oluşturulurken hata: ${url}`, error);
+            reject(error);
+        }
     });
 }

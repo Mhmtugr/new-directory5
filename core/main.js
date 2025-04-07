@@ -22,31 +22,6 @@ const appState = {
 // Sayfa yükleme durumları
 const pageLoadStatus = {};
 
-// DOM Seçici Sabitleri
-const SELECTORS = {
-    NAVBAR_ITEM: '.navbar-item',
-    USER_AVATAR: '.user-avatar',
-    MODAL_CLOSE: '.modal-close',
-    TAB: '.tab',
-    SEARCH_INPUT: '.search-input',
-    PAGE: '.page',
-    DEMO_NOTIFICATION: '#demo-mode-notification',
-    // İhtiyaç duyulan diğer seçiciler buraya eklenebilir
-};
-
-// Sayfa yükleme fonksiyonlarını içeren harita
-const pageLoadFunctions = {
-    dashboard: window.loadDashboardData,
-    orders: window.loadOrders,
-    production: window.loadProductionData,
-    materials: window.loadMaterialsData,
-    purchasing: window.loadPurchaseRequests,
-    planning: window.loadPlanningData,
-    reports: window.loadReportingData,
-    technical: window.loadTechnicalDocuments,
-    settings: window.loadSettings
-};
-
 /**
  * Uygulama başlatma işlevi
  */
@@ -56,7 +31,7 @@ function initApp() {
     // Demo modu kontrolü ve bildirimi
     if (appState.isDemoMode) {
         console.log("Demo modu tespit edildi");
-        const demoModeNotification = document.querySelector(SELECTORS.DEMO_NOTIFICATION);
+        const demoModeNotification = document.getElementById('demo-mode-notification');
         if (demoModeNotification) {
             demoModeNotification.style.display = 'block';
         }
@@ -82,9 +57,9 @@ function initApp() {
  * Kullanıcı kimlik doğrulama durumunu kontrol et
  */
 function checkUserAuthentication() {
-    // Firebase Auth kontrolü (window nesnesi üzerinden daha güvenli)
-    if (window.firebase && typeof window.firebase.auth === 'function') {
-        window.firebase.auth().onAuthStateChanged(handleAuthStateChanged);
+    // Firebase Auth kontrolü
+    if (typeof firebase !== 'undefined' && firebase.auth) {
+        firebase.auth().onAuthStateChanged(handleAuthStateChanged);
     } else if (appState.isDemoMode) {
         // Demo modunda otomatik giriş
         console.log("Firebase Auth yok, demo mod otomatik giriş yapılıyor");
@@ -107,13 +82,11 @@ function handleAuthStateChanged(user) {
         
         console.log("Kullanıcı oturum açtı:", user.email);
         
-        // Kullanıcı bilgilerini Firestore'dan al (fonksiyon var mı kontrol et)
-        if (typeof window.loadUserData === 'function') {
-            window.loadUserData(user.uid).catch(error => {
+        // Kullanıcı bilgilerini Firestore'dan al
+        if (typeof loadUserData === 'function') {
+            loadUserData(user.uid).catch(error => {
                 console.warn("Kullanıcı bilgileri yüklenemedi:", error);
             });
-        } else {
-            console.warn("'loadUserData' fonksiyonu tanımlanmamış veya global scope'da değil.");
         }
         
         // Ana uygulamayı göster
@@ -158,7 +131,7 @@ function handleURLRouting() {
  */
 function setupEventListeners() {
     // Navigasyon menü öğeleri
-    document.querySelectorAll(SELECTORS.NAVBAR_ITEM).forEach(item => {
+    document.querySelectorAll('.navbar-item').forEach(item => {
         item.addEventListener('click', function(event) {
             // İçeriği al ve lowercase yap
             const pageId = this.textContent.trim().toLowerCase();
@@ -171,23 +144,21 @@ function setupEventListeners() {
     });
     
     // Kullanıcı menüsü
-    const userAvatar = document.querySelector(SELECTORS.USER_AVATAR);
+    const userAvatar = document.querySelector('.user-avatar');
     if (userAvatar) {
         userAvatar.addEventListener('click', toggleUserMenu);
     }
     
     // Modal kapatma butonları
-    document.querySelectorAll(SELECTORS.MODAL_CLOSE).forEach(closeBtn => {
+    document.querySelectorAll('.modal-close').forEach(closeBtn => {
         closeBtn.addEventListener('click', function() {
-            const modal = this.closest('.modal'); // closest('.modal') kalabilir, ID spesifik
-            if (modal && modal.id) {
-                closeModal(modal.id);
-            }
+            const modalId = this.closest('.modal').id;
+            closeModal(modalId);
         });
     });
     
     // Tab içerikleri
-    document.querySelectorAll(SELECTORS.TAB).forEach(tab => {
+    document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', function() {
             const tabContentId = this.getAttribute('data-tab');
             switchTab(tabContentId);
@@ -207,23 +178,21 @@ function setupEventListeners() {
     });
     
     // Arama filtresi
-    const searchInput = document.querySelector(SELECTORS.SEARCH_INPUT);
+    const searchInput = document.querySelector('.search-input');
     if (searchInput) {
         searchInput.addEventListener('keyup', function() {
-            const filterFunctionName = `filter${appState.currentPage.charAt(0).toUpperCase() + appState.currentPage.slice(1)}`;
-            if (typeof window[filterFunctionName] === 'function') {
-                window[filterFunctionName]();
-            } else {
-                // Özel filtre fonksiyonları (birden fazla sayfa için aynı filtre)
-                if ((appState.currentPage === 'dashboard' || appState.currentPage === 'orders') && typeof window.filterOrders === 'function') {
-                    window.filterOrders();
-                } else if (appState.currentPage === 'stock' && typeof window.filterStock === 'function') {
-                    window.filterStock();
-                } else if (appState.currentPage === 'customers' && typeof window.filterCustomers === 'function') {
-                    window.filterCustomers();
-                } else {
-                    // console.warn(`${appState.currentPage} sayfası için filtre fonksiyonu (${filterFunctionName}, filterOrders, filterStock, filterCustomers) bulunamadı.`);
-                    // Uyarıyı şimdilik kapalı tutalım, çok fazla log üretebilir.
+            // İlgili filtre fonksiyonunu çağır
+            if (appState.currentPage === 'dashboard' || appState.currentPage === 'orders') {
+                if (typeof filterOrders === 'function') {
+                    filterOrders();
+                }
+            } else if (appState.currentPage === 'stock') {
+                if (typeof filterStock === 'function') {
+                    filterStock();
+                }
+            } else if (appState.currentPage === 'customers') {
+                if (typeof filterCustomers === 'function') {
+                    filterCustomers();
                 }
             }
         });
@@ -242,7 +211,7 @@ function setupEventListeners() {
     // Sayfa dışına tıklandığında dropdown ve modalları kapat
     document.addEventListener('click', function(event) {
         // Dropdown kontrolü
-        if (!event.target.matches(SELECTORS.USER_AVATAR) && !event.target.closest(SELECTORS.USER_AVATAR)) {
+        if (!event.target.matches('.user-avatar') && !event.target.closest('.user-dropdown')) {
             const dropdown = document.getElementById('user-dropdown');
             if (dropdown && dropdown.style.display === 'block') {
                 dropdown.style.display = 'none';
@@ -389,7 +358,7 @@ function showPage(pageName) {
     }
     
     // Sayfaları gizle
-    const pages = document.querySelectorAll(SELECTORS.PAGE);
+    const pages = document.querySelectorAll('.page');
     pages.forEach(page => {
         page.classList.remove('active');
     });
@@ -416,7 +385,7 @@ function showPage(pageName) {
     }
     
     // Menü öğelerini güncelle
-    const menuItems = document.querySelectorAll(SELECTORS.NAVBAR_ITEM);
+    const menuItems = document.querySelectorAll('.navbar-item');
     menuItems.forEach(item => {
         item.classList.remove('active');
         
@@ -432,69 +401,235 @@ function showPage(pageName) {
 }
 
 /**
- * Sayfa içeriğini yükle (Daha modüler hale getirildi)
+ * Sayfa içeriğini yükle
  * @param {string} pageName - Sayfa adı
  */
 function loadPageContent(pageName) {
     console.log(`${pageName} sayfası yükleniyor...`);
-
+    
     // Sayfa daha önce yüklendi mi kontrol et
     if (pageLoadStatus[pageName]) {
-        console.log(`${pageName} sayfası zaten yüklendi, yenilenmeyecek.`);
+        console.log(`${pageName} sayfası zaten yüklendi, yenilenmeyecek`);
         return;
     }
-
-    const pageElementId = `${pageName}-page`;
-    const loadFunction = pageLoadFunctions[pageName];
-
-    if (typeof loadFunction === 'function') {
-        showLoadingInPage(pageElementId);
-        pageLoadStatus[pageName] = true;
-
-        // Veri yükleme fonksiyonunu çağır
-        Promise.resolve(loadFunction()) // Fonksiyonun Promise dönüp dönmediğini garanti altına al
-            .then(() => {
-                // Başarılı olursa yükleniyor göstergesini kaldır (opsiyonel, fonksiyon kendi kaldırabilir)
-                // hideLoadingInPage(pageElementId);
-                console.log(`${pageName} sayfası başarıyla yüklendi.`);
-                
-                // Bazı sayfalar için ek yüklemeler (örneğin purchasing için eksik malzemeler)
-                if (pageName === 'purchasing' && typeof window.loadMissingMaterials === 'function') {
-                    window.loadMissingMaterials().catch(error => {
-                        console.warn("Eksik malzemeler yüklenirken hata:", error);
-                    });
-                }
-                // Dashboard için AI önerileri
-                if (pageName === 'dashboard' && typeof window.displayAIInsights === 'function') {
-                     window.displayAIInsights('ai-recommendations').catch(error => {
-                        console.warn("Dashboard AI önerileri yüklenirken hata:", error);
-                    });
-                }
-            })
-            .catch(error => {
-                console.error(`${pageName} verileri yüklenirken hata:`, error);
-                showErrorInPage(pageElementId, `${capitalizeFirstLetter(pageName)} verileri yüklenemedi`, error.message);
-            })
-            .finally(() => {
-                // Her durumda yükleniyor göstergesini kaldır (fonksiyon kendi kaldırmadıysa)
-                 if (!document.getElementById(pageElementId)?.querySelector('.loading-overlay')?.classList.contains('d-none')) {
-                     hideLoadingInPage(pageElementId);
-                 }
-            });
-    } else {
-        console.warn(`${pageName} sayfasını yükleyecek fonksiyon (${pageName} için pageLoadFunctions haritasında tanımlı fonksiyon) bulunamadı.`);
-        // Fonksiyon yoksa ilgili sayfanın boş kalmaması için bir mesaj gösterilebilir
-        // showErrorInPage(pageElementId, 'Sayfa içeriği yüklenemedi', 'Yükleme fonksiyonu bulunamadı.');
+    
+    switch (pageName) {
+        case 'dashboard':
+            showLoadingInPage('dashboard-page');
+            pageLoadStatus[pageName] = true;
+            
+            // Dashboard verilerini yükle
+            if (typeof loadDashboardData === 'function') {
+                loadDashboardData().catch(error => {
+                    console.error("Dashboard verileri yüklenirken hata:", error);
+                    showErrorInPage('dashboard-page', 'Dashboard verileri yüklenemedi', error.message);
+                });
+            } else if (typeof loadDashboardDataKOD1 === 'function') {
+                loadDashboardDataKOD1().catch(error => {
+                    console.error("Dashboard verileri yüklenirken hata:", error);
+                    showErrorInPage('dashboard-page', 'Dashboard verileri yüklenemedi', error.message);
+                });
+            } else if (typeof loadDashboardDataKOD2 === 'function') {
+                loadDashboardDataKOD2().catch(error => {
+                    console.error("Dashboard verileri yüklenirken hata:", error);
+                    showErrorInPage('dashboard-page', 'Dashboard verileri yüklenemedi', error.message);
+                });
+            } else {
+                console.warn("Dashboard verilerini yükleyecek fonksiyon bulunamadı");
+                hideLoadingInPage('dashboard-page');
+            }
+            
+            // Yapay zeka önerilerini yükle
+            if (typeof displayAIInsights === 'function') {
+                displayAIInsights('ai-recommendations').catch(error => {
+                    console.warn("AI önerileri yüklenirken hata:", error);
+                });
+            }
+            break;
+            
+        case 'sales':
+            showLoadingInPage('sales-page');
+            pageLoadStatus[pageName] = true;
+            
+            // Satış sayfası içeriğini yükle
+            if (typeof loadSalesData === 'function') {
+                loadSalesData().catch(error => {
+                    console.error("Satış verileri yüklenirken hata:", error);
+                    showErrorInPage('sales-page', 'Satış verileri yüklenemedi', error.message);
+                });
+            } else {
+                console.warn("Satış verilerini yükleyecek fonksiyon bulunamadı");
+                hideLoadingInPage('sales-page');
+            }
+            break;
+            
+        case 'projects':
+            showLoadingInPage('projects-page');
+            pageLoadStatus[pageName] = true;
+            
+            // Projeler sayfası içeriğini yükle
+            if (typeof loadProjects === 'function') {
+                loadProjects().catch(error => {
+                    console.error("Proje verileri yüklenirken hata:", error);
+                    showErrorInPage('projects-page', 'Proje verileri yüklenemedi', error.message);
+                });
+            } else {
+                console.warn("Proje verilerini yükleyecek fonksiyon bulunamadı");
+                hideLoadingInPage('projects-page');
+            }
+            break;
+            
+        case 'production':
+            showLoadingInPage('production-page');
+            pageLoadStatus[pageName] = true;
+            
+            // Üretim sayfası içeriğini yükle
+            if (typeof loadProductionPlans === 'function') {
+                loadProductionPlans().catch(error => {
+                    console.error("Üretim verileri yüklenirken hata:", error);
+                    showErrorInPage('production-page', 'Üretim verileri yüklenemedi', error.message);
+                });
+            } else {
+                console.warn("Üretim verilerini yükleyecek fonksiyon bulunamadı");
+                hideLoadingInPage('production-page');
+            }
+            break;
+            
+        case 'stock':
+            showLoadingInPage('stock-page');
+            pageLoadStatus[pageName] = true;
+            
+            // Stok sayfası içeriğini yükle
+            if (typeof loadStockData === 'function') {
+                loadStockData().catch(error => {
+                    console.error("Stok verileri yüklenirken hata:", error);
+                    showErrorInPage('stock-page', 'Stok verileri yüklenemedi', error.message);
+                });
+            } else {
+                console.warn("Stok verilerini yükleyecek fonksiyon bulunamadı");
+                hideLoadingInPage('stock-page');
+            }
+            break;
+            
+        case 'purchasing':
+            showLoadingInPage('purchasing-page');
+            pageLoadStatus[pageName] = true;
+            
+            // Satın alma sayfası içeriğini yükle
+            if (typeof loadPurchaseRequests === 'function') {
+                loadPurchaseRequests().catch(error => {
+                    console.error("Satın alma verileri yüklenirken hata:", error);
+                    showErrorInPage('purchasing-page', 'Satın alma verileri yüklenemedi', error.message);
+                });
+            } else {
+                console.warn("Satın alma verilerini yükleyecek fonksiyon bulunamadı");
+                hideLoadingInPage('purchasing-page');
+            }
+            
+            // Eksik malzemeleri yükle
+            if (typeof loadMissingMaterials === 'function') {
+                loadMissingMaterials().catch(error => {
+                    console.warn("Eksik malzemeler yüklenirken hata:", error);
+                });
+            }
+            break;
+            
+        case 'quality':
+            showLoadingInPage('quality-page');
+            pageLoadStatus[pageName] = true;
+            
+            // Kalite sayfası içeriğini yükle
+            if (typeof loadQualityData === 'function') {
+                loadQualityData().catch(error => {
+                    console.error("Kalite verileri yüklenirken hata:", error);
+                    showErrorInPage('quality-page', 'Kalite verileri yüklenemedi', error.message);
+                });
+            } else {
+                console.warn("Kalite verilerini yükleyecek fonksiyon bulunamadı");
+                hideLoadingInPage('quality-page');
+            }
+            break;
+            
+        case 'reports':
+            showLoadingInPage('reports-page');
+            pageLoadStatus[pageName] = true;
+            
+            // Raporlar sayfası içeriğini yükle
+            if (typeof loadReports === 'function') {
+                loadReports().catch(error => {
+                    console.error("Rapor verileri yüklenirken hata:", error);
+                    showErrorInPage('reports-page', 'Rapor verileri yüklenemedi', error.message);
+                });
+            } else {
+                console.warn("Rapor verilerini yükleyecek fonksiyon bulunamadı");
+                hideLoadingInPage('reports-page');
+            }
+            break;
+            
+        case 'notes':
+            showLoadingInPage('notes-page');
+            pageLoadStatus[pageName] = true;
+            
+            // Notlar sayfası içeriğini yükle
+            if (typeof loadNotes === 'function') {
+                loadNotes().catch(error => {
+                    console.error("Not verileri yüklenirken hata:", error);
+                    showErrorInPage('notes-page', 'Not verileri yüklenemedi', error.message);
+                });
+            } else {
+                console.warn("Not verilerini yükleyecek fonksiyon bulunamadı");
+                hideLoadingInPage('notes-page');
+            }
+            break;
+            
+        case 'ai':
+            showLoadingInPage('ai-page');
+            pageLoadStatus[pageName] = true;
+            
+            // Yapay Zeka sayfası içeriğini yükle
+            if (typeof displayAIInsights === 'function') {
+                displayAIInsights('ai-page').catch(error => {
+                    console.error("Yapay zeka verileri yüklenirken hata:", error);
+                    showErrorInPage('ai-page', 'Yapay zeka verileri yüklenemedi', error.message);
+                });
+            } else {
+                console.warn("Yapay zeka verilerini yükleyecek fonksiyon bulunamadı");
+                hideLoadingInPage('ai-page');
+            }
+            break;
+            
+        case 'profile':
+            showLoadingInPage('profile-page');
+            pageLoadStatus[pageName] = true;
+            
+            // Profil bilgilerini yükle
+            loadProfileData();
+            break;
+            
+        case 'settings':
+            showLoadingInPage('settings-page');
+            pageLoadStatus[pageName] = true;
+            
+            // Ayarları yükle
+            loadSettingsData();
+            break;
+            
+        case 'orders':
+            showLoadingInPage('orders-page');
+            pageLoadStatus[pageName] = true;
+            
+            // Sipariş listesini yükle
+            if (typeof loadOrders === 'function') {
+                loadOrders().catch(error => {
+                    console.error("Sipariş verileri yüklenirken hata:", error);
+                    showErrorInPage('orders-page', 'Sipariş verileri yüklenemedi', error.message);
+                });
+            } else {
+                console.warn("Sipariş verilerini yükleyecek fonksiyon bulunamadı");
+                hideLoadingInPage('orders-page');
+            }
+            break;
     }
-}
-
-/**
- * Helper fonksiyon: String'in ilk harfini büyük yapar
- * @param {string} string 
- * @returns {string}
- */
-function capitalizeFirstLetter(string) {
-    return string.charAt(0).toUpperCase() + string.slice(1);
 }
 
 /**
@@ -1102,6 +1237,132 @@ function applyOptimizationPlan() {
 }
 
 /**
+ * Toast mesajı göster
+ * @param {string} message - Mesaj metni
+ * @param {string} type - Mesaj tipi (success, error, warning, info)
+ * @param {number} duration - Mesajın görüntülenme süresi (ms)
+ */
+function showToast(message, type = 'success', duration = 3000) {
+    // Toast container elementini kontrol et veya oluştur
+    let toastContainer = document.getElementById('toast-container');
+    
+    if (!toastContainer) {
+        toastContainer = document.createElement('div');
+        toastContainer.id = 'toast-container';
+        toastContainer.style.position = 'fixed';
+        toastContainer.style.top = '20px';
+        toastContainer.style.right = '20px';
+        toastContainer.style.zIndex = '9999';
+        document.body.appendChild(toastContainer);
+    }
+    
+    // Toast elementini oluştur
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.style.marginBottom = '10px';
+    toast.style.padding = '10px 15px';
+    toast.style.borderRadius = '4px';
+    toast.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+    toast.style.display = 'flex';
+    toast.style.alignItems = 'center';
+    toast.style.justifyContent = 'space-between';
+    toast.style.minWidth = '250px';
+    toast.style.maxWidth = '350px';
+    
+    // Toast içeriğini oluştur
+    const content = document.createElement('div');
+    content.style.display = 'flex';
+    content.style.alignItems = 'center';
+    content.style.gap = '10px';
+    
+    // İkon
+    const icon = document.createElement('i');
+    icon.className = 'fas';
+    
+    // Tip'e göre stil ayarları
+    switch (type) {
+        case 'success':
+            toast.style.backgroundColor = '#d4edda';
+            toast.style.color = '#155724';
+            icon.className += ' fa-check-circle';
+            break;
+        case 'error':
+            toast.style.backgroundColor = '#f8d7da';
+            toast.style.color = '#721c24';
+            icon.className += ' fa-times-circle';
+            break;
+        case 'warning':
+            toast.style.backgroundColor = '#fff3cd';
+            toast.style.color = '#856404';
+            icon.className += ' fa-exclamation-triangle';
+            break;
+        case 'info':
+            toast.style.backgroundColor = '#d1ecf1';
+            toast.style.color = '#0c5460';
+            icon.className += ' fa-info-circle';
+            break;
+        default:
+            toast.style.backgroundColor = '#f8f9fa';
+            toast.style.color = '#212529';
+            icon.className += ' fa-bell';
+    }
+    
+    content.appendChild(icon);
+    
+    // Mesaj metni
+    const text = document.createElement('span');
+    text.textContent = message;
+    content.appendChild(text);
+    
+    toast.appendChild(content);
+    
+    // Kapatma butonu
+    const closeBtn = document.createElement('button');
+    closeBtn.style.background = 'none';
+    closeBtn.style.border = 'none';
+    closeBtn.style.padding = '0';
+    closeBtn.style.color = 'inherit';
+    closeBtn.style.fontSize = '16px';
+    closeBtn.style.cursor = 'pointer';
+    closeBtn.style.marginLeft = '10px';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.addEventListener('click', function() {
+        toastContainer.removeChild(toast);
+    });
+    
+    toast.appendChild(closeBtn);
+    
+    // Toast'u container'a ekle
+    toastContainer.appendChild(toast);
+    
+    // Toast'u akıcı bir şekilde göster
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(20px)';
+    toast.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+    
+    // Akıcı geçiş için timeout kullan
+    setTimeout(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateX(0)';
+    }, 10);
+    
+    // Toast'u otomatik kapat
+    setTimeout(() => {
+        if (toast.parentNode === toastContainer) {
+            // Kaldırılmadan önce animasyon ekle
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(20px)';
+            
+            setTimeout(() => {
+                if (toast.parentNode === toastContainer) {
+                    toastContainer.removeChild(toast);
+                }
+            }, 300);
+        }
+    }, duration);
+}
+
+/**
  * Loading spinner göster/gizle
  * @param {boolean} show - Göster/gizle durumu
  * @param {string} containerId - Loading spinner'ın ekleneceği container ID'si (opsiyonel)
@@ -1250,6 +1511,8 @@ window.showRegister = showRegister;
 window.showForgotPassword = showForgotPassword;
 window.showMainApp = showMainApp;
 window.enableDemoMode = enableDemoMode;
+window.showToast = showToast;
+window.toggleLoading = toggleLoading;
 window.refreshData = refreshData;
 window.showCreateOrderModal = showCreateOrderModal;
 window.applyOptimizationPlan = applyOptimizationPlan;

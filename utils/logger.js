@@ -3,8 +3,7 @@
  * Uygulama için loglama işlevleri
  */
 
-// AppConfig doğrudan global değişkenden alınacak
-// import AppConfig from '../config/app-config.js';
+import AppConfig from '../config/app-config.js';
 
 // Log seviyeleri
 const LOG_LEVELS = {
@@ -22,8 +21,8 @@ class Logger {
         this.maxLogSize = 1000; // Maksimum log sayısı
         
         // Konfigürasyondaki log seviyesini ayarla
-        if (window.AppConfig && window.AppConfig.logLevel) {
-            this.setLogLevel(window.AppConfig.logLevel);
+        if (AppConfig && AppConfig.logLevel) {
+            this.setLogLevel(AppConfig.logLevel);
         }
     }
     
@@ -155,9 +154,9 @@ class Logger {
         // Örneğin: Sentry, LogRocket, Firebase Analytics vb.
         try {
             // Konfigürasyon kontrolü
-            if (window.AppConfig && window.AppConfig.remoteLogging && window.AppConfig.remoteLogging.enabled) {
+            if (AppConfig && AppConfig.remoteLogging && AppConfig.remoteLogging.enabled) {
                 // Hata loglarını her zaman, diğerlerini yapılandırmaya göre gönder
-                if (logEntry.level === 'ERROR' || window.AppConfig.remoteLogging.logLevel <= LOG_LEVELS[logEntry.level]) {
+                if (logEntry.level === 'ERROR' || AppConfig.remoteLogging.logLevel <= LOG_LEVELS[logEntry.level]) {
                     // Burada örnek bir uzak sunucuya POST işlemi yapılabilir
                     // fetch(AppConfig.remoteLogging.endpoint, {
                     //     method: 'POST',
@@ -176,8 +175,8 @@ class Logger {
 // Singleton olarak Logger örneği oluştur
 const instance = new Logger();
 
-// Global Logger nesnesi oluştur
-window.Logger = {
+// Statik metodlar
+export default {
     // Log seviyeleri
     LOG_LEVELS,
     
@@ -203,7 +202,7 @@ window.Logger = {
         instance.error(message, data);
     },
     
-    // İleri düzey loglama metodları
+    // Log yönetim metodları
     exportLogs() {
         return instance.exportLogs();
     },
@@ -227,9 +226,4 @@ window.Logger = {
     searchLogs(searchTerm) {
         return instance.searchLogs(searchTerm);
     }
-};
-
-// ES Modüllerini destekleyen ortamlarda da çalışması için
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = window.Logger;
-} 
+}; 

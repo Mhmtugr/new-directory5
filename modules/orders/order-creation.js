@@ -1,372 +1,605 @@
 /**
- * order-creation.js
- * Yeni sipariş oluşturma işlevleri (Basitleştirilmiş Form İçin)
+ * order-form.js
+ * Sipariş formu işlevleri
  */
 
-// import EventBus from '../../utils/event-bus.js'; // Gerekirse aktif edilebilir
-// import Logger from '../../utils/logger.js'; // Gerekirse aktif edilebilir
-
-/**
- * Yeni sipariş oluşturma işlemini başlatır.
- * index.html'deki create-order-form'dan verileri alır.
- */
-async function createOrder() {
-    const form = document.getElementById('create-order-form');
-    if (!form) {
-        console.error("'create-order-form' bulunamadı!");
-        showToast("Sipariş formu bulunamadı.", "error");
-        return;
-    }
-    const formData = new FormData(form);
-    
-    // Form verilerini topla
-    const orderData = {
-        id: `order-${Date.now()}`, // Geçici ID
-        orderNo: `SO-${Date.now().toString().slice(-6)}`, // Geçici Sipariş No
-        customer: formData.get('customer'),
-        orderDate: formData.get('orderDate') || new Date().toISOString().split('T')[0],
-        cellType: formData.get('cellType'),
-        cellCount: parseInt(formData.get('cellCount')) || 1,
-        voltage: formData.get('voltage') || null,
-        current: formData.get('current') || null,
-        relayType: formData.get('relayType') || null,
-        deliveryDate: formData.get('deliveryDate') || null,
-        status: formData.get('status') || 'planning',
-        description: formData.get('description') || '',
-        // Teknik detaylar
-        technicalDetails: {
-            voltage: formData.get('voltage') || null,
-            current: formData.get('current') || null,
-            relayType: formData.get('relayType') || null,
-            protection: formData.get('protection') || null,
-            busbarType: formData.get('busbarType') || null,
-            cablingType: formData.get('cablingType') || null,
-            specialRequirements: formData.get('specialRequirements') || '',
-            standards: formData.get('standards') || [],
-            testingRequirements: formData.get('testingRequirements') || []
-        },
-        // Meta bilgiler
-        meta: {
-            createdAt: new Date().toISOString(),
-            createdBy: window.currentUser?.username || 'unknown',
-            isComplete: false,
-            priority: formData.get('priority') || 'medium',
-            notes: []
-        }
-    };
-
-    // Zorunlu teknik alan kontrolü
-    const missingFields = [];
-    
-    // Temel zorunlu alanlar
-    if (!orderData.customer) missingFields.push('Müşteri');
-    if (!orderData.cellType) missingFields.push('Hücre Tipi');
-    if (!orderData.cellCount) missingFields.push('Hücre Adedi');
-    
-    // Teknik detay zorunlu alanlar (kapsamda belirtildiği gibi tüm gerekli alanların girilmesini sağlıyoruz)
-    if (!orderData.technicalDetails.voltage) missingFields.push('Gerilim (kV)');
-    if (!orderData.technicalDetails.current) missingFields.push('Akım (A)');
-    if (!orderData.technicalDetails.relayType) missingFields.push('Röle Tipi');
-    
-    if (missingFields.length > 0) {
-        showToast(`Lütfen zorunlu alanları doldurun: ${missingFields.join(', ')}`, "warning", 10000);
-        
-        // Eksik alanları vurgula
-        missingFields.forEach(field => {
-            const inputField = document.querySelector(`[name="${field.toLowerCase().replace(/\s/g, '')}"]`);
-            if (inputField) {
-                inputField.classList.add('is-invalid');
-                
-                // 3 saniye sonra vurgulamayı kaldır
-                setTimeout(() => {
-                    inputField.classList.remove('is-invalid');
-                }, 3000);
-            }
-        });
-        
-        return; 
-    }
-
-    console.log("Yeni Sipariş Verileri:", orderData);
-    showToast("Sipariş verileri alındı, işleniyor...", "info");
-    closeModal('create-order-modal');
-    showLoadingInPage('orders-page'); // Siparişler sayfasında yükleniyor göster
-
-    try {
-        // 1. Malzeme Listesi Tahmini (AI Service)
-        let materialList = [];
-        if (window.AIService && typeof window.AIService.predictMaterials === 'function') {
-            try {
-                console.log("Malzeme listesi tahmini yapılıyor...");
-                const predictionResult = await window.AIService.predictMaterials(orderData);
-                materialList = predictionResult.materials || [];
-                console.log("Tahmin Edilen Malzeme Listesi:", materialList);
-                showToast(`Malzeme listesi ${predictionResult.source} kaynağından tahmin edildi.`, "info", 5000);
-            } catch (aiError) {
-                console.error("AI Malzeme tahmini hatası:", aiError);
-                showToast("Malzeme listesi AI ile tahmin edilemedi, varsayılan kullanılacak.", "warning");
-                materialList = window.AIService?.getLocalMaterialList(orderData.cellType) || [];
-            }
-        } else {
-            console.warn("AIService veya predictMaterials fonksiyonu bulunamadı. Varsayılan malzeme listesi kullanılıyor.");
-            showToast("AI Servisi bulunamadı, varsayılan malzeme listesi kullanılıyor.", "warning");
-            materialList = window.AIService?.getLocalMaterialList(orderData.cellType) || []; 
-        }
-        orderData.materials = materialList; // Malzeme listesini sipariş verisine ekle
-
-        // 2. Üretim Süresi Tahmini (AI Service)
-        if (window.AIService && typeof window.AIService.predictProductionTime === 'function') {
-            try {
-                console.log("Üretim süresi tahmini yapılıyor...");
-                const timePrediction = await window.AIService.predictProductionTime(orderData);
-                orderData.estimatedProductionDays = timePrediction.estimatedDays;
-                orderData.productionTimeSource = timePrediction.source;
-                console.log("Tahmini Üretim Süresi:", timePrediction);
-                if (timePrediction.estimatedDays) {
-                     showToast(`Üretim süresi ${timePrediction.source} kaynağından ${timePrediction.estimatedDays} gün olarak tahmin edildi.`, "info", 5000);
-                }
-            } catch (aiError) {
-                console.error("AI Üretim süresi tahmini hatası:", aiError);
-                showToast("Üretim süresi AI ile tahmin edilemedi.", "warning");
-            }
-        }
-
-        // 3. Üretim Planlama ve Teslimat Tarihi Hesaplama
-        let deliveryDateEstimated = false;
-        if (!orderData.deliveryDate && orderData.estimatedProductionDays) {
-            // Teslimat tarihi girilmemişse ve üretim süresi tahmini varsa, tahmini teslimat tarihi hesapla
-            const currentDate = new Date();
-            const estimatedDeliveryDate = new Date(currentDate);
-            estimatedDeliveryDate.setDate(currentDate.getDate() + orderData.estimatedProductionDays);
-            
-            // Hafta sonu ise bir sonraki iş gününe kaydır
-            if (estimatedDeliveryDate.getDay() === 0) { // Pazar
-                estimatedDeliveryDate.setDate(estimatedDeliveryDate.getDate() + 1);
-            } else if (estimatedDeliveryDate.getDay() === 6) { // Cumartesi
-                estimatedDeliveryDate.setDate(estimatedDeliveryDate.getDate() + 2);
-            }
-            
-            orderData.deliveryDate = estimatedDeliveryDate.toISOString().split('T')[0];
-            deliveryDateEstimated = true;
-            
-            showToast(`Teslimat tarihi tahmini: ${new Date(orderData.deliveryDate).toLocaleDateString('tr-TR')}`, "info", 5000);
-        }
-
-        // 4. Stok Kontrolü ve Malzeme Rezervasyonu
-        if (window.ERPService && typeof window.ERPService.reserveMaterialsForOrder === 'function' && materialList && materialList.length > 0) {
-            try {
-                console.log("Stok kontrolü ve malzeme rezervasyonu yapılıyor...");
-                const reservationResult = await window.ERPService.reserveMaterialsForOrder(orderData.id, materialList);
-                console.log("Rezervasyon Sonucu:", reservationResult);
-                
-                if (reservationResult.success) {
-                    showToast("Tüm malzemeler stokta mevcut ve rezerve edildi.", "success");
-                    orderData.materialStatus = 'complete';
-                } else if (reservationResult.shortages && reservationResult.shortages.length > 0) {
-                    // Eksik malzemeler var, satın alma sürecini başlat
-                    orderData.materialStatus = 'partial';
-                    orderData.shortages = reservationResult.shortages;
-                    
-                    // Satın alma talebi oluştur
-                    await triggerPurchaseRequests(orderData, reservationResult.shortages);
-                    
-                    // Eksik malzemeleri göster
-                    const shortageCount = reservationResult.shortages.length;
-                    showToast(`Dikkat: ${shortageCount} malzeme için stok yetersiz. Satın alma talepleri oluşturuldu.`, "warning", 8000);
-                } else {
-                    orderData.materialStatus = 'unknown';
-                    showToast("Malzeme stok durumu belirlenemedi.", "warning");
-                }
-            } catch (erpError) {
-                console.error("ERP Malzeme rezervasyon hatası:", erpError);
-                showToast(`Malzeme rezervasyonu sırasında hata oluştu: ${erpError.message}`, "error");
-                orderData.materialStatus = 'error';
-            }
-        } else {
-            orderData.materialStatus = 'pending';
-            if (!materialList || materialList.length === 0) {
-                console.warn("Rezervasyon atlandı: Malzeme listesi boş veya tahmin edilemedi.");
-            } else {
-                console.warn("Rezervasyon atlandı: ERPService veya reserveMaterialsForOrder fonksiyonu bulunamadı.");
-            }
-        }
-        
-        // 5. Siparişi Kaydetme
-        console.log("Sipariş kaydediliyor...", orderData);
-        await saveOrderLocallyOrToFirebase(orderData);
-        
-        // 6. Bildirimleri ve Olayları Tetikle
-        if (window.EventBus) {
-            window.EventBus.emit('orderCreated', {
-                orderId: orderData.id,
-                orderNo: orderData.orderNo,
-                customer: orderData.customer,
-                cellType: orderData.cellType,
-                cellCount: orderData.cellCount,
-                estimatedDeliveryDate: orderData.deliveryDate,
-                materialStatus: orderData.materialStatus,
-                shortages: orderData.shortages || []
-            });
-        }
-        
-        // 7. UI Güncellemeleri
-        // Sipariş Listesini Yenile
-        if (typeof window.loadOrders === 'function') {
-             window.loadOrders(); 
-        } else if (window.pageLoadFunctions && typeof window.pageLoadFunctions.orders === 'function') { 
-            window.pageLoadFunctions.orders(); 
-        }
-        
-        // Gösterge Paneli Güncelle
-        if (typeof window.loadDashboardData === 'function') {
-             window.loadDashboardData(); 
-        } else if (window.pageLoadFunctions && typeof window.pageLoadFunctions.dashboard === 'function') { 
-            window.pageLoadFunctions.dashboard(); 
-        }
-
-        // 8. İşlem Tamamlandı Bildirimi
-        const successMsg = deliveryDateEstimated ? 
-            `Sipariş ${orderData.orderNo} başarıyla oluşturuldu! Tahmini teslimat: ${new Date(orderData.deliveryDate).toLocaleDateString('tr-TR')}` :
-            `Sipariş ${orderData.orderNo} başarıyla oluşturuldu!`;
-        
-        showToast(successMsg, "success");
-
-        // 9. Formu Temizle
-        form.reset();
-
-    } catch (error) {
-        console.error("Sipariş oluşturma işlemi sırasında hata:", error);
-        showToast(`Sipariş oluşturulamadı: ${error.message}`, "error", 10000);
-    } finally {
-        hideLoadingInPage('orders-page'); // Yükleniyor göstergesini kaldır
-    }
-}
-
-/**
- * Siparişi yerel depolamaya veya Firebase'e kaydeder (Demo/Geçici)
- * @param {object} orderData 
- */
-async function saveOrderLocallyOrToFirebase(orderData) {
-    // Firebase Firestore kullanılıyorsa ve aktifse
-    if (window.AppConfig?.firebase?.enabled && window.firebase?.firestore) {
-        try {
-            // 'orders' koleksiyonuna belge ekle (ID'yi Firestore'un oluşturmasını sağla veya kendi ID'mizi kullanalım)
-            await window.firebase.firestore().collection("orders").doc(orderData.id).set({
-                ...orderData,
-                createdAt: window.firebase.firestore.FieldValue.serverTimestamp() // Oluşturma zamanı ekle
-            });
-            console.log("Sipariş Firebase Firestore'a kaydedildi:", orderData.id);
-            return true;
-        } catch (error) {
-            console.error("Sipariş Firestore'a kaydedilirken hata:", error);
-            // Firebase hatası olursa yerel depolamaya fallback yap
-            return saveOrderLocally(orderData);
-        }
-    } else {
-        // Firebase yoksa veya aktif değilse yerel depolamayı kullan
-        return saveOrderLocally(orderData);
-    }
-}
-
-/**
- * Siparişi Tarayıcının Yerel Depolamasına Kaydeder
- * @param {object} orderData 
- */
-function saveOrderLocally(orderData) {
-     try {
-        // Mevcut siparişleri al veya boş bir dizi oluştur
-        const existingOrders = JSON.parse(localStorage.getItem('demoOrders') || '[]');
-        // Yeni siparişi ekle
-        existingOrders.push(orderData);
-        // Güncellenmiş listeyi kaydet
-        localStorage.setItem('demoOrders', JSON.stringify(existingOrders));
-        console.log("Sipariş Local Storage'a kaydedildi:", orderData.id);
-        return true;
-    } catch (error) {
-        console.error("Sipariş Local Storage'a kaydedilirken hata:", error);
-        showToast("Sipariş yerel olarak kaydedilemedi.", "error");
-        return false;
-    }
-}
-
-/**
- * Eksik malzemeler için satın alma taleplerini oluşturur
- * @param {object} orderData Sipariş verisi
- * @param {Array<object>} shortages Eksik malzemeler listesi
- */
-async function triggerPurchaseRequests(orderData, shortages) {
-    if (!window.ERPService || typeof window.ERPService.createPurchaseRequest !== 'function') {
-        console.warn("ERPService veya createPurchaseRequest fonksiyonu bulunamadı. Satın alma talepleri oluşturulamadı.");
-        return false;
-    }
-    
-    const results = [];
-    
-    for (const shortage of shortages) {
-        try {
-            const { code, name, shortage: quantity, unit = 'adet' } = shortage;
-            
-            // Teslimat tarihinden 7 gün önce olacak şekilde gereken tarih hesapla
-            const requiredDate = new Date(orderData.deliveryDate);
-            requiredDate.setDate(requiredDate.getDate() - 7); // Teslimat tarihinden 1 hafta önce
-            
-            const result = await window.ERPService.createPurchaseRequest(
-                orderData.id,
-                code,
-                quantity,
-                requiredDate.toISOString().split('T')[0]
-            );
-            
-            console.log(`Satın alma talebi oluşturuldu: ${code} - ${name}, Miktar: ${quantity} ${unit}`, result);
-            results.push({
-                code,
-                name,
-                quantity,
-                result
-            });
-            
-        } catch (error) {
-            console.error(`Satın alma talebi oluşturulurken hata: ${shortage.code}`, error);
-            results.push({
-                code: shortage.code,
-                name: shortage.name,
-                error: error.message
-            });
-        }
-    }
-    
-    return results;
-}
-
-// Helper fonksiyonlar (showToast, closeModal, showLoadingInPage, hideLoadingInPage gibi)
-// Bu fonksiyonların core/main.js içinde global olarak tanımlı olduğu varsayılıyor.
-// Eğer tanımlı değillerse, buraya eklenmeleri veya import edilmeleri gerekir.
-
-// createOrder fonksiyonunu global scope'a ekle
-if (window) {
-   window.createOrder = createOrder;
-}
-
-console.log("Order Creation module (simplified) loaded.");
-
-// --- Önceki Karmaşık Form Fonksiyonları (Yoruma Alındı/Kaldırıldı) ---
-/*
+// Sayfa yüklendiğinde çalışacak
 document.addEventListener('DOMContentLoaded', function() {
     // Form gönderildiğinde
-    const orderForm = document.getElementById('orderForm');
-    if (orderForm) {
-        orderForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            submitOrderForm();
-        });
-    }
-    // ... (Diğer olay dinleyicileri)
+    document.getElementById('orderForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        submitOrderForm();
+    });
+
+    // İlk hücre ve projeyi ekle
+    addCell();
+    addProject();
+    
+    // Bugünün tarihini form değerlerine ekle
+    const today = new Date().toISOString().split('T')[0];
+    document.querySelector('input[name="orderDate"]').value = today;
 });
 
-function collectFormData() { ... }
-function addCell() { ... }
-function removeCell(button) { ... }
-function addProject() { ... }
-function removeProject(button) { ... }
-function submitOrderForm() { ... }
-*/
+// Formdan veri toplama fonksiyonu
+function collectFormData() {
+    const form = document.getElementById('orderForm');
+    const formData = new FormData(form);
+    
+    // JSON nesnesine dönüştür
+    const data = {
+        // Genel bilgiler
+        orderNo: formData.get('orderNo'),
+        orderDate: formData.get('orderDate'),
+        customerInfo: {
+            name: formData.get('customerName'),
+            documentNo: formData.get('documentNo'),
+            projectName: formData.get('projectName'),
+            contractNo: formData.get('contractNo')
+        },
+        deliveryInfo: {
+            deliveryType: formData.get('deliveryType'),
+            paymentMethod: formData.get('paymentMethod'),
+            caniasProjectNo: formData.get('caniasProjectNo'),
+            caniasDocumentNo: formData.get('caniasDocumentNo')
+        },
+        // Hücreler ve projeler aşağıda doldurulacak
+        cells: [],
+        projects: [],
+        additionalInfo: {
+            references: formData.get('referenceDocuments'),
+            labelInfo: formData.get('labelInfo'),
+            specialDesign: formData.get('specialDesign') === 'on',
+            lockingRequired: formData.get('lockingRequired') === 'on',
+            comments: formData.get('comments')
+        }
+    };
+    
+    // Hücreleri ekle
+    const cellItems = document.querySelectorAll('#cellsContainer .cell-item');
+    cellItems.forEach((cell, index) => {
+        // Temel hücre verileri
+        const cellData = {
+            id: index + 1,
+            facilityName: formData.get(`cells[${index}][facilityName]`),
+            acceptanceDate: formData.get(`cells[${index}][acceptanceDate]`),
+            deliveryDate: formData.get(`cells[${index}][deliveryDate]`),
+            quantity: parseInt(formData.get(`cells[${index}][quantity]`)) || 1,
+            productTypeCode: formData.get(`cells[${index}][productTypeCode]`),
+            technicalValues: formData.get(`cells[${index}][technicalValues]`),
+            serialNumber: formData.get(`cells[${index}][serialNumber]`),
+            cellRowCode: formData.get(`cells[${index}][cellRowCode]`),
+            isSeconde: formData.get(`cells[${index}][isSeconde]`) === 'on',
+            projectNumber: formData.get(`cells[${index}][projectNumber]`),
+            
+            // Teknik detaylar
+            currentTransformer: formData.get(`cells[${index}][currentTransformer]`),
+            voltageTransformer: formData.get(`cells[${index}][voltageTransformer]`),
+            breakerMotorCoil: {
+                motor: formData.get(`cells[${index}][breakerMotor]`),
+                coil: formData.get(`cells[${index}][breakerCoil]`)
+            },
+            disconnectorMotorCoil: {
+                motor: formData.get(`cells[${index}][disconnectorMotor]`),
+                coil: formData.get(`cells[${index}][disconnectorCoil]`)
+            },
+            relay: {
+                model: formData.get(`cells[${index}][relayModel]`),
+                caniasCode: formData.get(`cells[${index}][relayCode]`)
+            },
+            energyAnalyzer: {
+                model: formData.get(`cells[${index}][energyAnalyzer]`),
+                caniasCode: formData.get(`cells[${index}][analyzerCode]`)
+            },
+            agd: {
+                model: formData.get(`cells[${index}][agdModel]`),
+                caniasCode: formData.get(`cells[${index}][agdCode]`)
+            },
+            ukd: formData.get(`cells[${index}][ukd]`),
+            counter: {
+                model: formData.get(`cells[${index}][counterModel]`),
+                caniasCode: formData.get(`cells[${index}][counterCode]`)
+            },
+            breakerFuse: {
+                brand: formData.get(`cells[${index}][breakerFuse]`),
+                type: ''
+            },
+            voltageIndicator: formData.get(`cells[${index}][voltageIndicator]`),
+            dcSupply: formData.get(`cells[${index}][dcSupply]`),
+            cableTermination: {
+                model: formData.get(`cells[${index}][cableTermination]`),
+                caniasCode: formData.get(`cells[${index}][cableCode]`)
+            },
+            arrangementBars: {
+                model: formData.get(`cells[${index}][arrangementBars]`),
+                caniasCode: formData.get(`cells[${index}][barsCode]`)
+            },
+            closingDetail: formData.get(`cells[${index}][closingDetail]`),
+            connectorPart: formData.get(`cells[${index}][connectorPart]`),
+            otherFeatures: formData.get(`cells[${index}][otherFeatures]`)
+        };
+        
+        data.cells.push(cellData);
+    });
+    
+    // Projeleri ekle
+    const projectItems = document.querySelectorAll('#projectsContainer .project-item');
+    projectItems.forEach((project, index) => {
+        const projectData = {
+            id: index + 1,
+            name: formData.get(`projects[${index}][name]`),
+            cellArrangement: formData.get(`projects[${index}][cellArrangement]`),
+            bars: {
+                type1: {
+                    count: parseInt(formData.get(`projects[${index}][bars][type1][count]`)) || 0,
+                    size: formData.get(`projects[${index}][bars][type1][size]`),
+                    caniasCode: formData.get(`projects[${index}][bars][type1][caniasCode]`)
+                },
+                type2: {
+                    count: parseInt(formData.get(`projects[${index}][bars][type2][count]`)) || 0,
+                    size: formData.get(`projects[${index}][bars][type2][size]`),
+                    caniasCode: formData.get(`projects[${index}][bars][type2][caniasCode]`)
+                }
+            },
+            closingDetails: formData.get(`projects[${index}][closingDetails]`)
+        };
+        
+        data.projects.push(projectData);
+    });
+    
+    return data;
+}
+
+// Yeni hücre ekle
+function addCell() {
+    const container = document.getElementById('cellsContainer');
+    const template = document.getElementById('cellTemplate');
+    const cellCount = container.querySelectorAll('.cell-item').length;
+    
+    // Template'ten yeni hücre oluştur
+    const cellHTML = template.innerHTML;
+    const div = document.createElement('div');
+    div.innerHTML = cellHTML;
+    
+    // Hücre indeksi ve alan isimlerini güncelle
+    div.querySelectorAll('.cellIndex').forEach(el => {
+        el.textContent = cellCount + 1;
+    });
+    
+    // Input ve diğer elemanların name özelliklerini güncelle
+    div.querySelectorAll('[name*="cells[0]"]').forEach(el => {
+        el.name = el.name.replace('cells[0]', `cells[${cellCount}]`);
+    });
+    
+    // ID'leri güncelle
+    div.querySelectorAll('[id*="sekonde-0"]').forEach(el => {
+        el.id = el.id.replace('sekonde-0', `sekonde-${cellCount}`);
+    });
+    div.querySelectorAll('label[for*="sekonde-0"]').forEach(el => {
+        el.setAttribute('for', el.getAttribute('for').replace('sekonde-0', `sekonde-${cellCount}`));
+    });
+    
+    // Container'a ekle
+    container.appendChild(div.querySelector('.cell-item'));
+}
+
+// Hücre sil
+function removeCell(button) {
+    const container = document.getElementById('cellsContainer');
+    const cell = button.closest('.cell-item');
+    container.removeChild(cell);
+    
+    // Kalan hücrelerin indekslerini güncelle
+    const cells = container.querySelectorAll('.cell-item');
+    cells.forEach((cell, index) => {
+        cell.querySelectorAll('.cellIndex').forEach(el => {
+            el.textContent = index + 1;
+        });
+        
+        cell.querySelectorAll('[name*="cells["]').forEach(el => {
+            const nameParts = el.name.split('[');
+            const endPart = nameParts.slice(2).join('[');
+            el.name = `cells[${index}][${endPart}`;
+        });
+        
+        cell.querySelectorAll('[id*="sekonde-"]').forEach(el => {
+            el.id = `sekonde-${index}`;
+        });
+        cell.querySelectorAll('label[for*="sekonde-"]').forEach(el => {
+            el.setAttribute('for', `sekonde-${index}`);
+        });
+    });
+}
+
+// Yeni proje ekle
+function addProject() {
+    const container = document.getElementById('projectsContainer');
+    const template = document.getElementById('projectTemplate');
+    const projectCount = container.querySelectorAll('.project-item').length;
+    
+    // Template'ten yeni proje oluştur
+    const projectHTML = template.innerHTML;
+    const div = document.createElement('div');
+    div.innerHTML = projectHTML;
+    
+    // Proje indeksi ve alan isimlerini güncelle
+    div.querySelectorAll('.projectIndex').forEach(el => {
+        el.textContent = projectCount + 1;
+    });
+    
+    // Input ve diğer elemanların name özelliklerini güncelle
+    div.querySelectorAll('[name*="projects[0]"]').forEach(el => {
+        el.name = el.name.replace('projects[0]', `projects[${projectCount}]`);
+    });
+    
+    // Proje adını güncelle
+    const projectNameInput = div.querySelector('input[name*="name"]');
+    if (projectNameInput) {
+        projectNameInput.value = `PROJE-${projectCount + 1}`;
+    }
+    
+    // Container'a ekle
+    container.appendChild(div.querySelector('.project-item'));
+}
+
+// Proje sil
+function removeProject(button) {
+    const container = document.getElementById('projectsContainer');
+    const project = button.closest('.project-item');
+    container.removeChild(project);
+    
+    // Kalan projelerin indekslerini güncelle
+    const projects = container.querySelectorAll('.project-item');
+    projects.forEach((project, index) => {
+        project.querySelectorAll('.projectIndex').forEach(el => {
+            el.textContent = index + 1;
+        });
+        
+        project.querySelectorAll('[name*="projects["]').forEach(el => {
+            const nameParts = el.name.split('[');
+            const endPart = nameParts.slice(2).join('[');
+            el.name = `projects[${index}][${endPart}`;
+        });
+        
+        // Proje adını güncelle (eğer standart proje adı kullanılıyorsa)
+        const projectNameInput = project.querySelector('input[name*="name"]');
+        if (projectNameInput && projectNameInput.value.startsWith('PROJE-')) {
+            projectNameInput.value = `PROJE-${index + 1}`;
+        }
+    });
+}
+
+// Sipariş verilerini kaydet
+function saveOrder() {
+    const orderData = collectFormData();
+    console.log('Sipariş verileri:', orderData);
+    
+    // Gönderilecek API URL'i
+    const apiUrl = '/api/orders';
+    
+    // AJAX isteği ile verileri gönder
+    fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(orderData)
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Sipariş kaydedilemedi');
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Sipariş başarıyla kaydedildi:', data);
+        showToast('Sipariş başarıyla kaydedildi', 'success');
+        
+        // Başarılı kayıt sonrası yönlendirme
+        setTimeout(() => {
+            window.location.href = 'index.html';
+        }, 2000);
+    })
+    .catch(error => {
+        console.error('Sipariş kaydetme hatası:', error);
+        showToast('Sipariş kaydedilirken bir hata oluştu: ' + error.message, 'error');
+        
+        // Demo modu için başarılı olduğunu varsayalım
+        if (window.location.href.includes('demo=true')) {
+            showToast('Demo modu: Sipariş başarıyla kaydedildi (simülasyon)', 'success');
+            localStorage.setItem('lastOrderData', JSON.stringify(orderData));
+            
+            setTimeout(() => {
+                window.location.href = 'index.html';
+            }, 2000);
+        }
+    });
+}
+
+// Taslak olarak kaydet
+function saveAsDraft() {
+    const orderData = collectFormData();
+    
+    // localStorage'a kaydet
+    localStorage.setItem('orderFormDraft', JSON.stringify(orderData));
+    
+    showToast('Sipariş taslak olarak kaydedildi', 'success');
+}
+
+// Sayfa yüklendiğinde taslak varsa yükle
+function loadDraft() {
+    const draftData = localStorage.getItem('orderFormDraft');
+    if (draftData) {
+        const data = JSON.parse(draftData);
+        
+        // Form alanlarını doldur
+        // Burada draftData'dan form alanlarına veri dolduran kod gelecek
+        // Bu kısım çok uzun olduğu için şimdilik atlanmıştır
+        
+        showToast('Taslak sipariş yüklendi', 'info');
+    }
+}
+
+// Yapay zeka önerileri için
+function suggestProductType(input, targetField) {
+    if (input.length < 2) return;
+    
+    // Örnek öneri listesi
+    const suggestions = [
+        { code: 'RM 36 LB', description: '36kV 630A 16kA Yük Ayırıcılı Giriş Hücresi' },
+        { code: 'RM 36 CB', description: '36kV 630A 16kA Kesicili ÇIKIŞ Hücresi' },
+        { code: 'RM 36 FL', description: '36kV 200A 16kA Sigortalı Yük Ayırıcılı TR.Koruma Hücresi' }
+    ];
+    
+    // Girilen metne göre filtreleme
+    const matches = suggestions.filter(s => 
+        s.code.toLowerCase().includes(input.toLowerCase()) || 
+        s.description.toLowerCase().includes(input.toLowerCase())
+    );
+    
+    // Öneri kutusunu göster
+    showSuggestions(matches, targetField);
+}
+
+// Önerileri göster
+function showSuggestions(suggestions, targetField) {
+    // Bu fonksiyon, önerileri bir popup şeklinde gösterecek
+    // ve kullanıcının seçim yapmasını sağlayacak
+    // Basitlik için şimdilik console'a yazdırıyoruz
+    console.log('Öneriler:', suggestions);
+}
+
+/**
+ * Sipariş formunu gönderir
+ */
+async function submitOrderForm() {
+    try {
+        // Form verilerini doğrula
+        if (!validateOrderForm()) {
+            return false;
+        }
+        
+        // Form verilerini topla
+        const orderData = collectOrderFormData();
+        
+        // Sipariş formunu devre dışı bırak (işlem sırasında)
+        toggleOrderFormElements(true);
+        
+        // Sipariş ekleme işlemi
+        if (typeof addNewOrder === 'function') {
+            const result = await addNewOrder(orderData);
+            
+            if (result.success) {
+                // Sipariş başarıyla eklendi, formun sıfırlanması veya kapanması gibi işlemler
+                console.log('Sipariş başarıyla eklendi:', result.orderId);
+            } else {
+                console.error('Sipariş eklenirken hata:', result.error);
+            }
+        } else {
+            console.error('addNewOrder fonksiyonu bulunamadı');
+            document.getElementById('order-form-status').innerHTML = `
+                <div class="alert alert-danger">
+                    <strong>Hata!</strong> Sipariş ekleme fonksiyonu bulunamadı.
+                </div>
+            `;
+        }
+        
+        // Formu tekrar etkinleştir
+        toggleOrderFormElements(false);
+        
+        return false; // Formun normal submit işlemini engelle
+    } catch (error) {
+        console.error('Sipariş formu gönderme hatası:', error);
+        document.getElementById('order-form-status').innerHTML = `
+            <div class="alert alert-danger">
+                <strong>Hata!</strong> Sipariş formu gönderilirken bir sorun oluştu: ${error.message}
+            </div>
+        `;
+        toggleOrderFormElements(false);
+        return false;
+    }
+}
+
+/**
+ * Sipariş formu alanlarını toplar
+ * @returns {Object} Sipariş verileri
+ */
+function collectOrderFormData() {
+    const orderForm = document.getElementById('order-form');
+    
+    const orderData = {
+        orderNo: orderForm.elements['order-no'].value.trim(),
+        customer: orderForm.elements['customer-name'].value.trim(),
+        cellType: orderForm.elements['cell-type'].value,
+        quantity: parseInt(orderForm.elements['quantity'].value) || 1,
+        deliveryDate: new Date(orderForm.elements['delivery-date'].value),
+        priority: parseInt(orderForm.elements['priority'].value) || 3,
+        notes: orderForm.elements['notes'].value.trim(),
+        
+        // Teknik detaylar
+        specifications: {
+            voltage: parseInt(orderForm.elements['voltage'].value) || 36,
+            current: parseInt(orderForm.elements['current'].value) || 630,
+            relayType: orderForm.elements['relay-type'].value,
+            controlVoltage: parseInt(orderForm.elements['control-voltage'].value) || 24
+        },
+        
+        // Ek alanlar
+        contactPerson: orderForm.elements['contact-person'].value.trim(),
+        contactEmail: orderForm.elements['contact-email'].value.trim(),
+        contactPhone: orderForm.elements['contact-phone'].value.trim(),
+        
+        // Meta veriler
+        createdBy: firebase.auth().currentUser ? firebase.auth().currentUser.email : 'anonim',
+        createdAt: new Date()
+    };
+    
+    return orderData;
+}
+
+/**
+ * Sipariş formunu doğrular
+ * @returns {boolean} Form geçerli mi
+ */
+function validateOrderForm() {
+    const orderForm = document.getElementById('order-form');
+    const orderNo = orderForm.elements['order-no'].value.trim();
+    const customerName = orderForm.elements['customer-name'].value.trim();
+    const cellType = orderForm.elements['cell-type'].value;
+    const quantity = orderForm.elements['quantity'].value;
+    const deliveryDate = orderForm.elements['delivery-date'].value;
+    
+    let isValid = true;
+    let errorMessages = [];
+    
+    // Zorunlu alanları kontrol et
+    if (!orderNo) {
+        isValid = false;
+        errorMessages.push('Sipariş numarası zorunludur');
+        orderForm.elements['order-no'].classList.add('is-invalid');
+    } else {
+        orderForm.elements['order-no'].classList.remove('is-invalid');
+    }
+    
+    if (!customerName) {
+        isValid = false;
+        errorMessages.push('Müşteri adı zorunludur');
+        orderForm.elements['customer-name'].classList.add('is-invalid');
+    } else {
+        orderForm.elements['customer-name'].classList.remove('is-invalid');
+    }
+    
+    if (!cellType) {
+        isValid = false;
+        errorMessages.push('Hücre tipi seçilmelidir');
+        orderForm.elements['cell-type'].classList.add('is-invalid');
+    } else {
+        orderForm.elements['cell-type'].classList.remove('is-invalid');
+    }
+    
+    if (!quantity || isNaN(parseInt(quantity)) || parseInt(quantity) <= 0) {
+        isValid = false;
+        errorMessages.push('Miktar geçerli bir sayı olmalıdır (>0)');
+        orderForm.elements['quantity'].classList.add('is-invalid');
+    } else {
+        orderForm.elements['quantity'].classList.remove('is-invalid');
+    }
+    
+    if (!deliveryDate) {
+        isValid = false;
+        errorMessages.push('Teslim tarihi seçilmelidir');
+        orderForm.elements['delivery-date'].classList.add('is-invalid');
+    } else {
+        // Teslim tarihi bugünden önce olmamalı
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const inputDate = new Date(deliveryDate);
+        
+        if (inputDate < today) {
+            isValid = false;
+            errorMessages.push('Teslim tarihi bugünden önce olamaz');
+            orderForm.elements['delivery-date'].classList.add('is-invalid');
+        } else {
+            orderForm.elements['delivery-date'].classList.remove('is-invalid');
+        }
+    }
+    
+    // Hata mesajlarını göster
+    const statusElement = document.getElementById('order-form-status');
+    if (!isValid) {
+        statusElement.innerHTML = `
+            <div class="alert alert-danger">
+                <strong>Hata!</strong> Lütfen formdaki hataları düzeltin:
+                <ul>
+                    ${errorMessages.map(msg => `<li>${msg}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    } else {
+        statusElement.innerHTML = '';
+    }
+    
+    return isValid;
+}
+
+/**
+ * Form elementlerini etkinleştirir/devre dışı bırakır
+ * @param {boolean} disabled - Devre dışı bırakılsın mı
+ */
+function toggleOrderFormElements(disabled) {
+    const orderForm = document.getElementById('order-form');
+    const elements = orderForm.elements;
+    
+    for (let i = 0; i < elements.length; i++) {
+        elements[i].disabled = disabled;
+    }
+    
+    const submitButton = document.getElementById('submit-order-button');
+    if (submitButton) {
+        if (disabled) {
+            submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> İşleniyor...';
+            submitButton.disabled = true;
+        } else {
+            submitButton.innerHTML = '<i class="fas fa-save"></i> Siparişi Kaydet';
+            submitButton.disabled = false;
+        }
+    }
+}
+
+/**
+ * Yeni sipariş oluşturma formunu görüntüler
+ */
+function showOrderCreationForm() {
+    document.getElementById('active-orders-container').style.display = 'none';
+    document.getElementById('order-form-container').style.display = 'block';
+    
+    // Form alanlarını sıfırla
+    clearOrderForm();
+    
+    // Varsayılan teslim tarihini ayarla (bugünden 30 gün sonrası)
+    const defaultDeliveryDate = new Date();
+    defaultDeliveryDate.setDate(defaultDeliveryDate.getDate() + 30);
+    
+    const deliveryDateField = document.getElementById('order-form').elements['delivery-date'];
+    if (deliveryDateField) {
+        deliveryDateField.valueAsDate = defaultDeliveryDate;
+    }
+}
+
+/**
+ * Sipariş formunu temizler
+ */
+function clearOrderForm() {
+    const orderForm = document.getElementById('order-form');
+    if (orderForm) {
+        orderForm.reset();
+        
+        // Form doğrulama işaretlerini temizle
+        const invalidElements = orderForm.querySelectorAll('.is-invalid');
+        invalidElements.forEach(element => {
+            element.classList.remove('is-invalid');
+        });
+        
+        // Durum mesajını temizle
+        document.getElementById('order-form-status').innerHTML = '';
+    }
+}

@@ -1,157 +1,101 @@
 /**
- * event-bus.js
- * Uygulama içi olay iletişimi için kullanılan Event Bus modülü
+ * EventBus.js - Basit bir olay yayın/dinleme sistemi
  */
 
-class EventBus {
-    constructor() {
-        this.events = {};
-        this.history = [];
-        this.maxHistoryLength = 100; // Son 100 olayı sakla
-        this.debug = false;
-    }
-    
-    /**
-     * Debug modunu etkinleştir/devre dışı bırak
-     * @param {boolean} enabled Debug modu durumu
-     */
-    setDebug(enabled) {
-        this.debug = !!enabled;
-        return this;
-    }
-    
-    /**
-     * Bir olaya abone ol
-     * @param {string} event Olay adı
-     * @param {Function} callback Olay gerçekleştiğinde çağrılacak fonksiyon
-     * @param {Object} context Callback içindeki 'this' değeri için bağlam
-     * @returns {Function} Dinleyiciyi kaldırmak için kullanılabilecek fonksiyon
-     */
-    on(event, callback, context = null) {
-        // Olaylar dizisini oluştur (yoksa)
-        if (!this.events[event]) {
-            this.events[event] = [];
-        }
+// Daha önce tanımlanmış mı kontrol et
+if (window.EventBus) {
+    console.log("EventBus zaten yüklenmiş, tekrar yükleme atlanıyor.");
+} else {
+    // EventBus sınıfı
+    const EventBus = {
+        // Olay dinleyicileri için depolama
+        listeners: {},
         
-        // Callback ve bağlamı kaydet
-        const listener = {
-            callback: callback,
-            context: context
-        };
-        
-        this.events[event].push(listener);
-        
-        // Dinleyiciyi kaldırmak için kullanılabilecek fonksiyonu döndür
-        return () => this.off(event, callback, context);
-    }
-    
-    /**
-     * Bir olaydan aboneliği kaldır
-     * @param {string} event Olay adı
-     * @param {Function} callback Kaldırılacak callback fonksiyonu
-     * @param {Object} context Callback için bağlam
-     */
-    off(event, callback, context = null) {
-        // Olay yoksa yapacak bir şey yok
-        if (!this.events[event]) return;
-        
-        // Filtrele: Eşleşmeyen dinleyicileri tut
-        this.events[event] = this.events[event].filter(listener => {
-            return (listener.callback !== callback || listener.context !== context);
-        });
-        
-        // Dinleyici kalmadıysa olayı temizle
-        if (this.events[event].length === 0) {
-            delete this.events[event];
-        }
-    }
-    
-    /**
-     * Bir kez tetiklenecek olay dinleyicisi ekle
-     * @param {string} event Olay adı
-     * @param {Function} callback Callback fonksiyonu 
-     * @param {Object} context Callback için bağlam
-     */
-    once(event, callback, context = null) {
-        const removeListener = this.on(event, (...args) => {
-            removeListener();
-            callback.apply(context, args);
-        }, context);
-        
-        return removeListener;
-    }
-    
-    /**
-     * Bir olayı tetikle ve dinleyicilere veri gönder
-     * @param {string} event Olay adı
-     * @param {any} data Dinleyicilere gönderilecek veri
-     */
-    emit(event, data) {
-        // Geçmişe ekle
-        this.addToHistory(event, data);
-        
-        // Debug mod kontrolü
-        if (this.debug) {
-            console.log(`[EventBus] Event: ${event}`, data);
-        }
-        
-        // Olay yoksa yapacak bir şey yok
-        if (!this.events[event]) return;
-        
-        // Tüm dinleyicileri çağır
-        this.events[event].forEach(listener => {
-            try {
-                listener.callback.call(listener.context, data);
-            } catch (error) {
-                console.error(`[EventBus] Error in event listener for ${event}:`, error);
+        /**
+         * Yeni bir olay dinleyicisi ekle
+         * @param {string} event - Olay adı
+         * @param {Function} callback - Çağrılacak fonksiyon
+         * @returns {Function} - Dinleyiciyi kaldırmak için kullanılabilecek fonksiyon
+         */
+        on(event, callback) {
+            if (!this.listeners[event]) {
+                this.listeners[event] = [];
             }
-        });
-    }
-    
-    /**
-     * Geçmişe olay ekle
-     * @param {string} event Olay adı
-     * @param {any} data Olay verisi
-     * @private
-     */
-    addToHistory(event, data) {
-        this.history.push({
-            event: event,
-            data: data,
-            timestamp: new Date()
-        });
+            
+            this.listeners[event].push(callback);
+            
+            // Dinleyiciyi kaldırmak için bir fonksiyon döndür
+            return () => {
+                this.off(event, callback);
+            };
+        },
         
-        // Geçmiş maksimum uzunluğu aşıyorsa kırp
-        if (this.history.length > this.maxHistoryLength) {
-            this.history = this.history.slice(-this.maxHistoryLength);
+        /**
+         * Bir olay dinleyicisini kaldır
+         * @param {string} event - Olay adı
+         * @param {Function} callback - Kaldırılacak olan callback
+         */
+        off(event, callback) {
+            if (!this.listeners[event]) return;
+            
+            // Belirli bir callback'i kaldır
+            if (callback) {
+                this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
+            } 
+            // Tüm dinleyicileri kaldır
+            else {
+                delete this.listeners[event];
+            }
+        },
+        
+        /**
+         * Bir olayı yayınla
+         * @param {string} event - Olay adı
+         * @param {any} data - Olayla birlikte gönderilecek veri
+         */
+        emit(event, data) {
+            if (!this.listeners[event]) return;
+            
+            // Tüm dinleyicileri bilgilendir
+            this.listeners[event].forEach(callback => {
+                try {
+                    callback(data);
+                } catch (error) {
+                    console.error(`EventBus olay işleyici hatası (${event}):`, error);
+                }
+            });
+            
+            // CustomEvent olarak da yayınla (DOM entegrasyonu için)
+            try {
+                const customEvent = new CustomEvent(`eventbus:${event}`, { detail: data });
+                document.dispatchEvent(customEvent);
+            } catch (error) {
+                console.warn(`EventBus CustomEvent yayını hatası:`, error);
+            }
+        },
+        
+        /**
+         * Bir kere çalışacak bir olay dinleyicisi ekle
+         * @param {string} event - Olay adı
+         * @param {Function} callback - Çağrılacak fonksiyon
+         */
+        once(event, callback) {
+            const onceCallback = (data) => {
+                callback(data);
+                this.off(event, onceCallback);
+            };
+            
+            return this.on(event, onceCallback);
         }
+    };
+    
+    // Global olarak erişilebilir hale getir
+    window.EventBus = EventBus;
+    
+    // ES modül uyumluluğu için
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = { default: EventBus };
     }
     
-    /**
-     * Olay geçmişini döndür 
-     * @returns {Array} Olay geçmişi
-     */
-    getHistory() {
-        return this.history;
-    }
-    
-    /**
-     * Belirli bir olay için geçmişi döndür
-     * @param {string} event Olay adı
-     * @returns {Array} Filtrelenmiş olay geçmişi
-     */
-    getHistoryByEvent(event) {
-        return this.history.filter(item => item.event === event);
-    }
-}
-
-// Tek bir örnek oluştur (singleton)
-const instance = new EventBus();
-
-// EventBus'ı global window nesnesine ekle
-window.EventBus = instance;
-
-// ES Modüllerini destekleyen ortamlarda da çalışması için
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = instance;
+    console.log("EventBus yüklendi ve hazır");
 }

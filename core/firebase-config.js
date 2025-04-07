@@ -39,20 +39,10 @@ async function initializeFirebase() {
             }
             
             // Firebase uygulamasını başlat
-            if (!firebase.apps || !firebase.apps.length) {
+            if (!firebase.apps.length) {
                 try {
-                    // Firebase 9+ için
-                    if (typeof firebase.initializeApp === 'function') {
-                        app = firebase.initializeApp(firebaseConfig);
-                        console.log("Firebase başlatıldı (yeni SDK)");
-                    } 
-                    // Eski Firebase versiyonu için
-                    else if (firebase.default && typeof firebase.default.initializeApp === 'function') {
-                        app = firebase.default.initializeApp(firebaseConfig);
-                        console.log("Firebase başlatıldı (eski SDK uyumluluğu)");
-                    } else {
-                        throw new Error("Firebase initializeApp bulunamadı");
-                    }
+                    app = firebase.initializeApp(firebaseConfig);
+                    console.log("Firebase başlatıldı");
                 } catch (initError) {
                     console.warn("Firebase başlatılamadı, demo moda geçiliyor", initError);
                     enableDemoMode();
@@ -77,13 +67,7 @@ async function initializeFirebase() {
                         
                         // İlk veri seti kontrolü - bunu başka bir fonksiyona taşıyalım
                         checkInitialDataset()
-                            .then(() => {
-                                // Firebase bağlantı durumunu kontrol et
-                                if (window.db) {
-                                    setupFirebaseConnectionMonitor();
-                                }
-                                resolve(true);
-                            })
+                            .then(() => resolve(true))
                             .catch(error => {
                                 console.warn("İlk veri seti kontrolünde hata:", error);
                                 resolve(true); // Yine de devam etmek için true döndürüyoruz
@@ -324,42 +308,6 @@ function showDemoModeNotification() {
             
             document.body.appendChild(container);
         }, 1000);
-    }
-}
-
-// Firebase bağlantı durumunu takip et
-function setupFirebaseConnectionMonitor() {
-    try {
-        if (!db || !db.collection) {
-            console.warn("Firestore bağlantı monitörü kurulurken hata: Firestore tanımlı değil");
-            return;
-        }
-        
-        db.collection(".info/connected").onSnapshot(snapshot => {
-            const isConnected = snapshot.docs[0]?.data()?.connected === true;
-            window.isFirebaseConnected = isConnected;
-            
-            console.log(`Firebase bağlantı durumu: ${isConnected ? 'Bağlı' : 'Bağlantı yok'}`);
-            
-            // Bağlantı durumunu EventBus üzerinden bildir
-            if (window.EventBus && typeof window.EventBus.emit === 'function') {
-                window.EventBus.emit('firebase:connectionChanged', { connected: isConnected });
-            }
-            
-            // UI'da bağlantı durumunu göster
-            const connectionIndicator = document.getElementById('connection-status');
-            if (connectionIndicator) {
-                connectionIndicator.className = isConnected ? 'text-success' : 'text-danger';
-                connectionIndicator.innerHTML = isConnected ? 
-                    '<i class="bi bi-wifi"></i> Çevrimiçi' : 
-                    '<i class="bi bi-wifi-off"></i> Çevrimdışı';
-            }
-        }, error => {
-            console.error("Firebase bağlantı takibi hatası:", error);
-            window.isFirebaseConnected = false;
-        });
-    } catch (error) {
-        console.error("Firebase bağlantı monitörü kurulurken hata:", error);
     }
 }
 

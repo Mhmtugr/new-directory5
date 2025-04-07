@@ -3,9 +3,8 @@
  * Çevrimdışı çalışma ve PWA desteği için
  */
 
-const CACHE_NAME = 'mehmet-industrial-cache-v2';
+const CACHE_NAME = 'mehmet-industrial-cache-v1';
 const OFFLINE_URL = 'offline.html';
-const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 1 hafta (milisaniye cinsinden)
 
 // Önbelleğe alınacak dosyalar
 const ASSETS_TO_CACHE = [
@@ -21,28 +20,19 @@ const ASSETS_TO_CACHE = [
   '/core/database.js',
   '/core/styles/main.css',
   '/utils/event-bus.js',
-  '/utils/logger.js',
   '/services/api-service.js',
   '/services/erp-service.js',
   '/services/ai-service.js',
   '/modules/dashboard/dashboard.js',
   '/modules/orders/orders.js',
-  '/modules/orders/order-creation.js',
-  '/modules/orders/order-detail.js', 
   '/modules/production/production.js',
-  '/modules/production/production-planning.js',
   '/modules/purchasing/purchasing.js',
-  '/modules/inventory/materials.js',
-  '/modules/inventory/stock-management.js',
-  '/modules/ai/main.js',
+  '/modules/inventory/inventory.js',
   '/modules/ai/chatbot.js',
   '/modules/ai/ai-analytics.js',
   '/modules/ai/ai-integration.js',
   '/modules/ai/advanced-ai.js',
   '/modules/ai/data-viz.js',
-  '/components/charts.js',
-  '/components/forms.js',
-  '/components/ui-components.js',
   '/assets/icons/icon-192x192.png',
   '/assets/icons/icon-512x512.png',
   // Alternatif yollar (dosya yollarının başında / olmadığında)
@@ -70,17 +60,6 @@ const ASSETS_TO_CACHE = [
   'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css'
 ];
-
-// Önbelleğe fonksiyon: API-benzeri dosyalar hariç
-const isExcluded = (url) => {
-  // API isteklerini önbelleğe alma
-  if (url.pathname.startsWith('/api/')) return true;
-  
-  // Analitik isteklerini önbelleğe alma
-  if (url.hostname.includes('analytics') || url.hostname.includes('google-analytics')) return true;
-  
-  return false;
-};
 
 // Service Worker Yükleme
 self.addEventListener('install', event => {
@@ -128,230 +107,152 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   
-  // Hariç tutulan istekler için normal ağ işlemi
-  if (isExcluded(url)) {
-    return;
+  // Aynı kaynak kontrolleri
+  const isSameOrigin = url.origin === self.location.origin;
+  
+  // API istekleri için özel işlem
+  if (url.pathname.startsWith('/api/')) {
+    return; // API isteklerini işleme, normal ağ isteklerine bırak
   }
   
-  // Navigasyon istekleri için stale-while-revalidate yaklaşımı
+  // Navigasyon istekleri
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      caches.match(event.request)
-        .then(cachedResponse => {
-          const fetchPromise = fetch(event.request)
-            .then(networkResponse => {
-              // Başarılı yanıtı önbelleğe kaydet
-              if (networkResponse && networkResponse.status === 200) {
-                const responseClone = networkResponse.clone();
-                caches.open(CACHE_NAME).then(cache => {
-                  cache.put(event.request, responseClone);
-                });
-              }
-              return networkResponse;
-            })
+      fetch(event.request)
+        .catch(() => {
+          console.log('Navigasyon isteği başarısız, çevrimdışı sayfasına yönlendiriliyor');
+          return caches.match(OFFLINE_URL)
             .catch(() => {
-              // Ağ bağlantısı yoksa offline sayfasına yönlendir
-              console.log('Navigasyon isteği başarısız, çevrimdışı sayfasına yönlendiriliyor');
-              return caches.match(OFFLINE_URL);
+              console.error('Offline URL bulunamadı!');
+              return new Response('İnternet bağlantısı yok ve offline sayfası da bulunamadı.', {
+                status: 503,
+                statusText: 'Service Unavailable',
+                headers: new Headers({
+                  'Content-Type': 'text/plain'
+                })
+              });
             });
-          
-          // Önbellekteki yanıt varsa hemen kullan, arka planda güncelle
-          return cachedResponse || fetchPromise;
         })
     );
     return;
   }
   
-  // JavaScript dosyaları için
+  // Javascript dosyaları için daha esnek bir önbellek eşleştirme stratejisi
   if (event.request.url.endsWith('.js')) {
     event.respondWith(
       caches.match(event.request)
-        .then(cachedResponse => {
-          // Önbellekte varsa ve çok eski değilse kullan
-          if (cachedResponse) {
-            // Zamanı kontrol et (opsiyonel)
-            const cachedTime = new Date(cachedResponse.headers.get('date') || 0);
-            const now = new Date();
-            
-            if (now - cachedTime < CACHE_DURATION) {
-              // Güncel önbellek, arka planda da güncelle
-              fetchAndUpdateCache(event.request);
-              return cachedResponse;
-            }
-          }
-          
-          // Önbellekte yok veya güncel değil, ağdan getir
-          return fetchAndCacheWithFallback(event.request);
-        })
-    );
-    return;
-  }
-  
-  // CSS, Font ve Resimler için Cache-First stratejisi
-  if (
-    event.request.url.endsWith('.css') || 
-    event.request.url.endsWith('.png') || 
-    event.request.url.endsWith('.jpg') || 
-    event.request.url.endsWith('.jpeg') || 
-    event.request.url.endsWith('.svg') || 
-    event.request.url.endsWith('.woff2') || 
-    event.request.url.includes('bootstrap') || 
-    event.request.url.includes('font-awesome')
-  ) {
-    event.respondWith(
-      caches.match(event.request)
-        .then(cachedResponse => {
-          return cachedResponse || fetchAndCacheWithFallback(event.request);
-        })
-    );
-    return;
-  }
-  
-  // Diğer tüm istekler için Network-First yaklaşımı
-  event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        // Başarılı yanıtı önbelleğe kaydet
-        if (response && response.status === 200) {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then(cache => {
-            cache.put(event.request, responseClone);
-          });
-        }
-        return response;
-      })
-      .catch(() => {
-        // Ağ bağlantısı yoksa önbellekten dene
-        return caches.match(event.request);
-      })
-  );
-});
-
-/**
- * İsteği ağdan getir ve önbelleğe kaydet
- * @param {Request} request İstek
- * @returns {Promise<Response>} Yanıt
- */
-function fetchAndCacheWithFallback(request) {
-  return fetch(request)
-    .then(response => {
-      // Yanıt geçerliyse önbelleğe kaydet
-      if (response && response.status === 200) {
-        const responseClone = response.clone();
-        caches.open(CACHE_NAME).then(cache => {
-          cache.put(request, responseClone);
-        });
-      }
-      return response;
-    })
-    .catch(err => {
-      // Ağ hatası - önbellekten dene
-      console.warn('Ağ isteği başarısız, önbellekten deneniyor:', err);
-      return caches.match(request)
         .then(cachedResponse => {
           if (cachedResponse) {
             return cachedResponse;
           }
           
-          // Yol eşleşme denemesi - tam eşleşme bulunamazsa
-          const url = new URL(request.url);
-          const fileName = url.pathname.split('/').pop();
-          
-          return caches.open(CACHE_NAME)
-            .then(cache => cache.keys())
-            .then(keys => {
-              const matchingKey = keys.find(key => {
-                const keyUrl = new URL(key.url);
-                return keyUrl.pathname.split('/').pop() === fileName;
+          // Tam eşleşme yoksa, dosya adı eşleşmesi deneyin
+          return caches.keys()
+            .then(cacheNames => caches.open(CACHE_NAME))
+            .then(cache => {
+              return cache.keys().then(keys => {
+                // URL'den dosya adını çıkar
+                const requestedFile = url.pathname.split('/').pop();
+                
+                // Aynı dosya adına sahip önbellekteki dosyaları bul
+                const matchingKey = keys.find(key => {
+                  const keyUrl = new URL(key.url);
+                  const keyFile = keyUrl.pathname.split('/').pop();
+                  return keyFile === requestedFile;
+                });
+                
+                if (matchingKey) {
+                  return cache.match(matchingKey);
+                }
+                
+                // Eşleşme yoksa, ağdan getir
+                return fetch(event.request);
               });
-              
-              if (matchingKey) {
-                return caches.match(matchingKey);
-              }
-              
-              throw new Error('Önbellekte eşleşme bulunamadı');
+            })
+            .catch(err => {
+              console.error('JS dosyası önbellek eşleştirme hatası:', err);
+              return fetch(event.request);
             });
         })
-        .catch(cacheErr => {
-          console.error('Önbellek erişim hatası:', cacheErr);
-          // Son çare olarak varsayılan offline içeriği göster
-          if (request.mode === 'navigate') {
-            return caches.match(OFFLINE_URL);
+        .then(response => {
+          // Yanıt alınabildiyse ve geçerli bir yanıtsa önbelleğe al
+          if (response && response.status === 200) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then(cache => {
+              cache.put(event.request, responseClone);
+            });
+          }
+          return response;
+        })
+        .catch(err => {
+          console.error('Fetch hatası:', err);
+          return new Response('Kaynak yüklenemedi', {
+            status: 404,
+            headers: new Headers({
+              'Content-Type': 'text/plain'
+            })
+          });
+        })
+    );
+    return;
+  }
+  
+  // Önbelleklenmiş statik varlıklar için "Cache First" stratejisi
+  if (
+    isSameOrigin &&
+    ASSETS_TO_CACHE.some(asset => url.pathname === asset || url.pathname === asset.replace(/^\//, ''))
+  ) {
+    event.respondWith(
+      caches.match(event.request)
+        .then(cachedResponse => {
+          if (cachedResponse) {
+            return cachedResponse;
           }
           
-          // Diğer kaynaklar için basit hata yanıtı
-          return new Response('Kaynak bulunamadı ve çevrimdışısınız', {
-            status: 503,
-            headers: {'Content-Type': 'text/plain'}
+          console.log('Önbellekte bulunmayan dosya talep ediliyor:', url.pathname);
+          return fetch(event.request)
+            .then(response => {
+              // Geçerli bir yanıt alındıysa önbelleğe al
+              if (response && response.status === 200) {
+                const responseClone = response.clone();
+                caches.open(CACHE_NAME).then(cache => {
+                  cache.put(event.request, responseClone);
+                });
+              }
+              return response;
+            })
+            .catch(err => {
+              console.error('Fetch hatası:', err);
+              return caches.match(OFFLINE_URL);
+            });
+        })
+    );
+    return;
+  }
+  
+  // Diğer istekler için "Network First" stratejisi
+  event.respondWith(
+    fetch(event.request)
+      .catch(() => {
+        return caches.match(event.request)
+          .then(cachedResponse => {
+            if (cachedResponse) {
+              return cachedResponse;
+            }
+            
+            // HTML istekleri için offline sayfasını göster
+            if (event.request.headers.get('Accept').includes('text/html')) {
+              return caches.match(OFFLINE_URL);
+            }
+            
+            // Diğer kaynaklar için 404 döndür
+            return new Response('Kaynak bulunamadı ve önbellekte yok', {
+              status: 404,
+              statusText: 'Not Found'
+            });
           });
-        });
-    });
-}
-
-/**
- * Arka planda isteği ağdan getir ve önbelleği güncelle
- * @param {Request} request İstek
- */
-function fetchAndUpdateCache(request) {
-  // Bu işlem tamamen arka planda yapılır, yanıtı döndürmez
-  fetch(request)
-    .then(response => {
-      if (response && response.status === 200) {
-        caches.open(CACHE_NAME).then(cache => {
-          cache.put(request, response);
-        });
-      }
-    })
-    .catch(err => {
-      console.warn('Arka plan güncelleme hatası:', err);
-    });
-}
-
-// Çevrimdışı-çevrimiçi geçişlerini izle
-self.addEventListener('online', () => {
-  console.log('Çevrimiçi durumuna geçildi, kaynakları güncelleniyor...');
-  
-  // Önbellekteki kaynakları güncelle
-  caches.open(CACHE_NAME)
-    .then(cache => cache.keys())
-    .then(requests => {
-      requests.forEach(request => {
-        // Her kaynağı arka planda güncelle
-        fetchAndUpdateCache(request);
-      });
-    });
-});
-
-// Çalışma kapsamını genişlet
-self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-  
-  if (event.data && event.data.type === 'CACHE_URLS') {
-    // İstemciden gelen ek URL'leri önbelleğe al
-    if (event.data.urls && Array.isArray(event.data.urls)) {
-      event.waitUntil(
-        caches.open(CACHE_NAME)
-          .then(cache => {
-            return cache.addAll(event.data.urls);
-          })
-          .then(() => {
-            event.ports[0].postMessage({
-              status: 'SUCCESS',
-              message: `${event.data.urls.length} adet ek kaynak önbelleğe alındı`
-            });
-          })
-          .catch(error => {
-            console.error('Dinamik önbellekleme hatası:', error);
-            event.ports[0].postMessage({
-              status: 'ERROR',
-              message: error.message
-            });
-          })
-      );
-    }
-  }
+      })
+  );
 });
 
 // Push Bildirim İşleme

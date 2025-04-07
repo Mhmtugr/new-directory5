@@ -8,13 +8,7 @@ const AppConfig = {
         erp: '/api/erp'
     },
     firebase: {
-        apiKey: "AIzaSyDELVs5CU3TfaLaOkoJhz_3vM2W7DFHkqA",
-        authDomain: "mehmet-endustriyel-takip.firebaseapp.com",
-        projectId: "mehmet-endustriyel-takip",
-        storageBucket: "mehmet-endustriyel-takip.appspot.com",
-        messagingSenderId: "682912134567",
-        appId: "1:682912134567:web:9d7a5f8b3e6b23a142b678",
-        measurementId: "G-63EPBR5LW2"
+        // Firebase config
     },
     logLevel: 'INFO', // DEBUG, INFO, WARN, ERROR, NONE
     modules: {
@@ -33,14 +27,11 @@ const AppConfig = {
         }
     },
     ai: {
-        // --- GÜVENLİK UYARISI ---
-        // BU API ANAHTARLARI ÜRETİM ORTAMINDA ASLA DOĞRUDAN FRONTEND KODUNDA TUTULMAMALIDIR!
-        // GÜVENLİK İÇİN BU ANAHTARLARI MUTLAKA ORTAM DEĞİŞKENLERİ (ENVIRONMENT VARIABLES) KULLANARAK
-        // VEYA TERCİHEN BACKEND TARAFINDA GÜVENLİ BİR ŞEKİLDE SAKLAYIN.
-        // BURADAKİ DEĞERLER SADECE GELİŞTİRME/DEMO AMAÇLIDIR VE GERÇEK DEĞERLERLE DEĞİŞTİRİLMEMELİDİR.
-        // --- GÜVENLİK UYARISI ---
+        // Bu API anahtarlarını üretim ortamında asla doğrudan kodda tutmayın
+        // Güvenlik için environment variables veya backend tarafında saklayın
+        // Bu sadece demo/geliştirme amaçlıdır
         deepseek: {
-            apiKey: "sk-42d0185c484b4bf2907392864f4ae76d", // <-- DİKKAT: GÜVENLİ DEĞİL! BACKEND'E TAŞINMALI!
+            apiKey: "sk-42d0185c484b4bf2907392864f4ae76d",
             model: "deepseek-r1-llm",
             maxTokens: 2000,
             temperature: 0.7,
@@ -48,7 +39,7 @@ const AppConfig = {
         },
         // OpenAI entegrasyonu
         openai: {
-            apiKey: "", // <-- DİKKAT: GÜVENLİ DEĞİL! BOŞ BIRAKILMALI, BACKEND HALLETMELİ!
+            apiKey: "", // Sadece geliştirme/demo için
             model: "gpt-4", // GPT-4 modeline yükseltildi
             systemMessage: "Sen bir üretim takip ve planlama asistanısın. Orta gerilim anahtarlama ekipmanları üretimi konusunda uzmanlaşmışsın. Firma için imalat süreçlerini takip eden, tahmin ve analiz yapabilen bir yapay zeka asistanısın."
         },
@@ -83,15 +74,9 @@ const AppConfig = {
         },
         // Canias ERP'ye özel entegrasyon detayları
         canias: {
-            // --- ÖNEMLİ NOT ---
-            // Aşağıdaki host, port, username gibi Canias bağlantı bilgileri
-            // ASLA frontend kodunda bulunmamalıdır. Bu bilgiler backend API
-            // tarafında güvenli bir şekilde yönetilmelidir. Buradaki değerler
-            // sadece örnek amaçlıdır ve kod içinde kullanılmamalıdır.
-            // --- ÖNEMLİ NOT ---
-            host: "192.168.1.100", // <-- ÖRNEK DEĞER - BACKEND'DE YÖNETİLMELİ
-            port: 8080, // <-- ÖRNEK DEĞER - BACKEND'DE YÖNETİLMELİ
-            username: "api_user", // <-- ÖRNEK DEĞER - BACKEND'DE YÖNETİLMELİ
+            host: "192.168.1.100",
+            port: 8080,
+            username: "api_user",
             modules: {
                 inventory: {
                     enabled: true,

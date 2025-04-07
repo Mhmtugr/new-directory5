@@ -1,1452 +1,1126 @@
 /**
  * chatbot.js
- * Mehmet Endüstriyel Takip Asistan Modülü
+ * Yapay zeka asistanı işlevleri
  */
 
 import AppConfig from '../../config/app-config.js';
-import EventBus from '../../utils/event-bus.js';
+import AdvancedAI from './advanced-ai.js';
+import AIIntegrationModule from './ai-integration.js';
 import Logger from '../../utils/logger.js';
+import { aiService } from '../../services/aiService.js';
 
 class Chatbot {
     constructor() {
-        this.isInitialized = false;
+        this.container = document.querySelector('.ai-chatbot-container');
+        this.messagesContainer = this.container.querySelector('.chat-messages');
+        this.input = this.container.querySelector('input');
+        this.sendButton = this.container.querySelector('.send-message');
+        this.closeButton = this.container.querySelector('.close-chat');
+        this.chatbotButton = document.querySelector('.ai-chatbot-btn');
         this.isOpen = false;
-        this.messageHistory = [];
-        this.erpService = null;
-        this.aiConnector = null;
-        this.typing = false;
-        this.lastUpdate = null;
-        this.offlineResponses = {
-            greeting: ["Merhaba! Size nasıl yardımcı olabilirim?", "Merhaba! Mehmet Endüstriyel Takip Asistanı olarak hizmetinizdeyim."],
-            stockQuery: ["Stok bilgilerine şu anda çevrimdışı modda erişilemez. İnternet bağlantınızı kontrol edin.", "Üzgünüm, stok sorgulaması için internet bağlantısı gerekiyor."],
-            orderQuery: ["Sipariş bilgilerine şu anda çevrimdışı modda sınırlı erişim var. Son bilinen veriler gösterilecek.", "Sipariş bilgileri için çevrimiçi olmak daha iyi olacaktır."],
-            timeQuery: [`Şu anki tarih ve saat: ${new Date().toLocaleString('tr-TR')}`, "Size tarih ve saat bilgisini verebilirim."],
-            unknownQuery: ["Üzgünüm, bu soruyu şu anda yanıtlayamıyorum.", "Bu konu hakkında daha fazla bilgi için çevrimiçi olmamız gerekebilir."]
-        };
-        
-        // Chatbot DOM elementlerini oluştur
-        this.createChatbotElements();
     }
-    
-    /**
-     * Chatbot modülünü başlat
-     * @param {Object} erpService - ERP servis nesnesi
-     * @param {Object} aiConnector - AI bağlantı nesnesi
-     */
-    init(erpService, aiConnector = null) {
-        if (this.isInitialized) return;
-        
-        this.erpService = erpService;
-        this.aiConnector = aiConnector;
-        
-        // Event dinleyicileri
+
+    initialize() {
         this.setupEventListeners();
-        
-        // Yerel mesaj geçmişini yükle
-        this.loadMessageHistory();
-        
-        // ERP olaylarını dinle
-        this.setupERPEventListeners();
-        
-        this.isInitialized = true;
-        Logger.info('Chatbot başlatıldı');
+        this.addWelcomeMessage();
     }
-    
-    /**
-     * Chatbot DOM elementlerini oluştur
-     */
-    createChatbotElements() {
-        // Ana chatbot konteynerini bul
-        this.chatbotContainer = document.querySelector('.ai-chatbot');
-        
-        if (!this.chatbotContainer) {
-            Logger.error('Chatbot konteyneri bulunamadı');
-            return;
-        }
-        
-        // Chatbot penceresini oluştur
-        const chatbotWindow = document.createElement('div');
-        chatbotWindow.className = 'chatbot-window';
-        chatbotWindow.innerHTML = `
-            <div class="chatbot-header">
-                <h5>M.E.T.S. Asistan</h5>
-                <div class="chatbot-controls">
-                    <button type="button" class="clear-chat" title="Sohbeti Temizle">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                    <button type="button" class="close-chat" title="Kapat">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="chatbot-messages"></div>
-            <div class="chatbot-typing">
-                <div class="typing-indicator">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </div>
-            </div>
-            <div class="chatbot-input-container">
-                <input type="text" class="chatbot-input" placeholder="Sorunuzu yazın...">
-                <button class="chatbot-send-btn">
-                    <i class="fas fa-paper-plane"></i>
-                </button>
-            </div>
-        `;
-        
-        // Chatbot butonunu ve penceresini konteyner içine ekle
-        this.chatbotContainer.appendChild(chatbotWindow);
-        
-        // Element referanslarını tut
-        this.chatbotBtn = this.chatbotContainer.querySelector('.ai-chatbot-btn');
-        this.chatbotWindow = this.chatbotContainer.querySelector('.chatbot-window');
-        this.messagesContainer = this.chatbotContainer.querySelector('.chatbot-messages');
-        this.inputField = this.chatbotContainer.querySelector('.chatbot-input');
-        this.sendButton = this.chatbotContainer.querySelector('.chatbot-send-btn');
-        this.clearButton = this.chatbotContainer.querySelector('.clear-chat');
-        this.closeButton = this.chatbotContainer.querySelector('.close-chat');
-        this.typingIndicator = this.chatbotContainer.querySelector('.chatbot-typing');
-    }
-    
-    /**
-     * Event dinleyicilerini ayarla
-     */
+
     setupEventListeners() {
         // Chatbot butonuna tıklama
-        this.chatbotBtn.addEventListener('click', () => this.toggleChatbot());
-        
-        // Mesaj gönderme butonuna tıklama
-        this.sendButton.addEventListener('click', () => this.sendMessage());
-        
-        // Input alanında Enter tuşuna basma
-        this.inputField.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                this.sendMessage();
-            }
-        });
-        
-        // Temizleme butonuna tıklama
-        this.clearButton.addEventListener('click', () => this.clearChat());
-        
+        this.chatbotButton.addEventListener('click', () => this.toggleChat());
+
         // Kapatma butonuna tıklama
-        this.closeButton.addEventListener('click', () => this.toggleChatbot());
-    }
-    
-    /**
-     * ERP olaylarını dinle
-     */
-    setupERPEventListeners() {
-        // Yeni sipariş olayını dinle
-        EventBus.on('orderCreated', (data) => {
-            if (!this.isOpen) {
-                // Bildirim göster
-                this.showNotification(`Yeni sipariş oluşturuldu: ${data.orderNumber}`);
-            } else {
-                // Otomatik mesaj ekle
-                this.addBotMessage(`Yeni bir sipariş oluşturuldu: ${data.orderNumber}. Sipariş detaylarını görmek ister misiniz?`);
-            }
-        });
-        
-        // Stok uyarı olayını dinle
-        EventBus.on('stockAlert', (data) => {
-            if (!this.isOpen) {
-                // Bildirim göster
-                this.showNotification(`Stok uyarısı: ${data.materialCode} malzemesi kritik seviyede`);
-            } else {
-                // Otomatik mesaj ekle
-                this.addBotMessage(`Stok uyarısı: ${data.materialCode} (${data.materialName}) malzemesi kritik seviyede. Güncel stok: ${data.currentStock} ${data.unit}`);
-            }
+        this.closeButton.addEventListener('click', () => this.closeChat());
+
+        // Mesaj gönderme
+        this.sendButton.addEventListener('click', () => this.sendMessage());
+        this.input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') this.sendMessage();
         });
     }
-    
-    /**
-     * Chatbot'u aç/kapat
-     */
-    toggleChatbot() {
-        if (this.isOpen) {
-            this.chatbotWindow.classList.remove('active');
-            this.chatbotContainer.classList.remove('active');
-        } else {
-            this.chatbotWindow.classList.add('active');
-            this.chatbotContainer.classList.add('active');
-            this.inputField.focus();
-            
-            // İlk karşılama mesajını ekle
-            if (this.messageHistory.length === 0) {
-                this.addBotMessage(this.getOfflineResponse('greeting'));
-            }
-        }
-        
+
+    toggleChat() {
         this.isOpen = !this.isOpen;
+        this.container.style.display = this.isOpen ? 'flex' : 'none';
+        if (this.isOpen) {
+            this.input.focus();
+        }
     }
-    
-    /**
-     * Sohbeti temizle
-     */
-    clearChat() {
-        this.messagesContainer.innerHTML = '';
-        this.messageHistory = [];
-        this.saveMessageHistory();
-        this.addBotMessage(this.getOfflineResponse('greeting'));
+
+    closeChat() {
+        this.isOpen = false;
+        this.container.style.display = 'none';
     }
-    
-    /**
-     * Kullanıcı mesajını gönder
-     */
-    sendMessage() {
-        const message = this.inputField.value.trim();
-        
-        if (message === '') return;
-        
+
+    async sendMessage() {
+        const message = this.input.value.trim();
+        if (!message) return;
+
         // Kullanıcı mesajını ekle
-        this.addUserMessage(message);
-        
-        // Giriş alanını temizle
-        this.inputField.value = '';
-        
-        // Yazıyor göstergesi göster
-        this.showTypingIndicator();
-        
-        // Bot yanıtını oluştur
-        this.generateBotResponse(message);
-    }
-    
-    /**
-     * Bot yanıtını oluştur
-     * @param {string} userMessage Kullanıcı mesajı
-     */
-    async generateBotResponse(userMessage) {
+        this.addMessage(message, 'user');
+        this.input.value = '';
+
         try {
-            let response = '';
+            // AI servisinden yanıt al
+            const response = await aiService.processQuery(message);
             
-            // Sipariş takibi için sorgu mu?
-            const orderQuery = this.detectOrderQuery(userMessage);
-            if (orderQuery) {
-                Logger.info(`Sipariş sorgusu algılandı: ${JSON.stringify(orderQuery)}`);
-                
-                if (orderQuery.orderId) {
-                    // Belirli bir sipariş hakkında bilgi istenmiş
-                    let orderInfo;
-                    
-                    if (this.erpService && typeof this.erpService.getOrderById === 'function') {
-                        // ERP'den veri al
-                        orderInfo = await this.erpService.getOrderById(orderQuery.orderId);
-                    } else if (this.erpService && typeof this.erpService.getOrderData === 'function') {
-                        // Tüm siparişleri al ve filtreleme yap
-                        const allOrders = await this.erpService.getOrderData();
-                        orderInfo = allOrders.find(order => {
-                            // ID, orderNo veya orderID ile eşleştir
-                            return (order.id === orderQuery.orderId || 
-                                   order.orderId === orderQuery.orderId || 
-                                   order.orderNo === orderQuery.orderId);
-                        });
-                    }
-                    
-                    if (orderInfo) {
-                        // Siparişle ilgili kapsamlı bilgi formatla
-                        response = this.formatDetailedOrderInfo(orderInfo);
-                        
-                        // Eğer özel soru sorduysa (örn: "teslimat tarihi ne zaman?")
-                        if (orderQuery.specificQuestion) {
-                            response += this.formatSpecificOrderInfo(orderInfo, orderQuery.specificQuestion);
-                        }
-                        
-                        // Sipariş malzeme durumunu kontrol et
-                        const materialStatus = await this.checkOrderMaterialStatus(orderInfo.id || orderInfo.orderId);
-                        if (materialStatus) {
-                            response += materialStatus;
-                        }
-                        
-                        // Üretim durumunu kontrol et
-                        const productionStatus = await this.checkOrderProductionStatus(orderInfo.id || orderInfo.orderId);
-                        if (productionStatus) {
-                            response += productionStatus;
-                        }
-                    } else {
-                        response = `Üzgünüm, "${orderQuery.orderId}" numaralı sipariş bulunamadı. Lütfen doğru sipariş numarasını girdiğinizden emin olun.`;
-                    }
-                } else if (orderQuery.general) {
-                    // Genel sipariş bilgisi istenmiş
-                    response = await this.getGeneralOrdersInfo();
-                } else if (orderQuery.status) {
-                    // Belirli durumdaki siparişler istenmiş
-                    response = await this.getOrdersByStatus(orderQuery.status);
-                } else if (orderQuery.customer) {
-                    // Belirli müşterinin siparişleri istenmiş
-                    response = await this.getOrdersByCustomer(orderQuery.customer);
-                } else if (orderQuery.delayed) {
-                    // Geciken siparişler istenmiş
-                    response = await this.getDelayedOrders();
-                } else {
-                    // Sipariş sorgusu anlaşılamadı
-                    response = "Sipariş sorgunuzu tam olarak anlayamadım. Lütfen sipariş numarası belirterek tekrar sorun. Örneğin: 'SO-123456 siparişi ne durumda?'";
-                }
-            } 
-            // Stok sorgusu mu?
-            else if (userMessage.toLowerCase().includes('stok') || 
-                userMessage.toLowerCase().includes('malzeme') ||
-                userMessage.toLowerCase().includes('depo')) {
-                response = await this.handleStockQuery(userMessage);
-            } 
-            // Üretim sorgusu mu?
-            else if (userMessage.toLowerCase().includes('üretim') || 
-                    userMessage.toLowerCase().includes('imalat') ||
-                    userMessage.toLowerCase().includes('hücre')) {
-                response = await this.handleProductionQuery(userMessage);
-            }
-            // Gecikme sorgusu mu?
-            else if (userMessage.toLowerCase().includes('gecik') || 
-                    userMessage.toLowerCase().includes('termin') ||
-                    userMessage.toLowerCase().includes('teslimat')) {
-                response = await this.handleDelayQuery(userMessage);
-            }
-            // Rapor sorgusu mu?
-            else if (userMessage.toLowerCase().includes('rapor') || 
-                    userMessage.toLowerCase().includes('analiz') ||
-                    userMessage.toLowerCase().includes('özet')) {
-                response = await this.handleReportQuery(userMessage);
-            }
-            // Birim sorgusu mu?
-            else if (userMessage.toLowerCase().includes('birim') || 
-                    userMessage.toLowerCase().includes('departman') ||
-                    userMessage.toLowerCase().includes('ekip')) {
-                response = await this.handleDepartmentQuery(userMessage);
-            }
-            // Yardım/Selamlama sorgusu mu?
-            else if (userMessage.toLowerCase().includes('merhaba') || 
-                    userMessage.toLowerCase().includes('selam') ||
-                    userMessage.toLowerCase().includes('yardım') ||
-                    userMessage.toLowerCase().includes('nasıl')) {
-                response = this.getGreetingResponse();
-            }
-            // Çevrimdışı sunucu sorgusu veya AI kullanımı
-            else {
-                // Çevrimiçi bağlantı kontrol et
-                if (!window.navigator.onLine) {
-                    response = this.getOfflineResponse('unknownQuery');
-                } else if (this.aiConnector && typeof this.aiConnector.query === 'function') {
-                    // AI'ya sorguyu gönder
-                    try {
-                        const aiResponse = await this.aiConnector.query(userMessage, this.messageHistory);
-                        response = aiResponse || "Üzgünüm, sorunuza şu anda yanıt veremiyorum.";
-                    } catch (aiError) {
-                        Logger.error(`AI yanıt hatası: ${aiError.message}`);
-                        response = "Yapay zeka servisine bağlanırken bir sorun oluştu. Lütfen daha sonra tekrar deneyin.";
-                    }
-                } else {
-                    // Basit yanıt ver
-                    response = "Üzgünüm, bu konuda size yardımcı olamıyorum. Sipariş, stok veya üretim durumu hakkında sorular sorabilirsiniz.";
-                }
-            }
-            
-            // Yanıtı ekle
-            this.addBotMessage(response);
-            
+            // AI yanıtını ekle
+            this.addMessage(response, 'assistant');
         } catch (error) {
-            Logger.error(`Bot yanıtı oluşturma hatası: ${error.message}`, error);
-            this.addBotMessage("Bir hata oluştu. Lütfen daha sonra tekrar deneyin.");
-        } finally {
-            this.hideTypingIndicator();
+            console.error('Chatbot error:', error);
+            this.addMessage('Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin.', 'assistant');
         }
     }
-    
-    /**
-     * Sipariş sorgularını algılayarak analiz eder
-     * @param {string} message Kullanıcı mesajı
-     * @returns {object|null} Sorgu detayları veya null
-     */
-    detectOrderQuery(message) {
-        const lowerMessage = message.toLowerCase();
+
+    addMessage(content, type) {
+        const messageElement = document.createElement('div');
+        messageElement.className = `chat-message ${type}`;
         
-        // Sipariş ile ilgili anahtar kelimeler
-        const orderKeywords = ['sipariş', 'order', 'sip', 'so-', 'so:'];
+        const time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
         
-        if (!orderKeywords.some(keyword => lowerMessage.includes(keyword))) {
-            return null; // Sipariş ile ilgili değil
-        }
-        
-        // Sonuç nesnesi
-        const result = {
-            isOrderQuery: true
-        };
-        
-        // Sipariş numarası ara
-        // Formatları kapsayan regex: SO-123456, SO:123456, S-123, SO123456, vs.
-        const orderNoRegex = /\b(?:so[-:]?|sip[-:]?|sipariş[-:]?|order[-:]?)(\d{3,8})\b/i;
-        const orderNoMatch = lowerMessage.match(orderNoRegex);
-        
-        if (orderNoMatch) {
-            result.orderId = orderNoMatch[1]; // Numara kısmını al
-            
-            // Siparişle ilgili özel soru tespit et
-            if (lowerMessage.includes('termin') || lowerMessage.includes('teslimat')) {
-                result.specificQuestion = 'delivery';
-            } else if (lowerMessage.includes('durum') || lowerMessage.includes('aşama')) {
-                result.specificQuestion = 'status';
-            } else if (lowerMessage.includes('malzeme') || lowerMessage.includes('stok')) {
-                result.specificQuestion = 'materials';
-            } else if (lowerMessage.includes('üretim') || lowerMessage.includes('imalat')) {
-                result.specificQuestion = 'production';
-            } else if (lowerMessage.includes('müşteri') || lowerMessage.includes('alıcı')) {
-                result.specificQuestion = 'customer';
-            }
-        } 
-        // Belirli numarada sipariş yoksa genel sorgu olabilir
-        else {
-            // Genel sipariş sorgusu
-            if (lowerMessage.includes('tüm') || lowerMessage.includes('bütün') || lowerMessage.includes('listele')) {
-                result.general = true;
-            }
-            
-            // Duruma göre sorgu
-            if (lowerMessage.includes('bekle') || lowerMessage.includes('planning')) {
-                result.status = 'planning';
-            } else if (lowerMessage.includes('üretim') || lowerMessage.includes('production')) {
-                result.status = 'production';
-            } else if (lowerMessage.includes('tamamla') || lowerMessage.includes('completed')) {
-                result.status = 'completed';
-            } else if (lowerMessage.includes('iptal') || lowerMessage.includes('cancelled')) {
-                result.status = 'cancelled';
-            } else if (lowerMessage.includes('gecik') || lowerMessage.includes('delayed')) {
-                result.delayed = true;
-            }
-            
-            // Müşteriye göre sorgu
-            const customerRegex = /(?:müşteri|alıcı|customer)[:\s]+([a-zçğıöşü\s]+)/i;
-            const customerMatch = lowerMessage.match(customerRegex);
-            if (customerMatch) {
-                result.customer = customerMatch[1].trim();
-            }
-        }
-        
-        return result;
-    }
-    
-    /**
-     * Belirli bir sipariş için malzeme durumunu kontrol eder
-     * @param {string} orderId Sipariş ID'si
-     * @returns {string} Malzeme durumu açıklaması veya boş string
-     */
-    async checkOrderMaterialStatus(orderId) {
-        try {
-            if (!this.erpService || typeof this.erpService.getOrderMaterialStatus !== 'function') {
-                return "";
-            }
-            
-            const materialStatus = await this.erpService.getOrderMaterialStatus(orderId);
-            
-            if (!materialStatus) {
-                return "";
-            }
-            
-            let result = "\n\n📦 **Malzeme Durumu:**\n";
-            
-            // Özet bilgiler
-            const availableCount = materialStatus.filter(m => m.status === 'available').length;
-            const partialCount = materialStatus.filter(m => m.status === 'partial').length;
-            const missingCount = materialStatus.filter(m => m.status === 'missing').length;
-            const totalCount = materialStatus.length;
-            
-            result += `- Toplam ${totalCount} malzeme gerekli\n`;
-            result += `- ${availableCount} malzeme stokta mevcut\n`;
-            
-            if (partialCount > 0) {
-                result += `- ${partialCount} malzeme için kısmi stok var\n`;
-            }
-            
-            if (missingCount > 0) {
-                result += `- ${missingCount} malzeme stokta eksik\n`;
-                
-                // Eksik malzemelerin durumunu ekle
-                const missingItems = materialStatus.filter(m => m.status === 'missing' || m.status === 'partial');
-                
-                if (missingItems.length > 0) {
-                    result += "\n**Tedariki Beklenen Malzemeler:**\n";
-                    
-                    missingItems.forEach(item => {
-                        const purchaseInfo = item.purchaseInfo || {};
-                        const requiredQty = item.requiredQuantity || 0;
-                        const availableQty = item.availableQuantity || 0;
-                        const missingQty = Math.max(0, requiredQty - availableQty);
-                        
-                        result += `- ${item.name} (${missingQty} ${item.unit || 'adet'})`;
-                        
-                        if (purchaseInfo.status) {
-                            result += `, Satın Alma Durumu: ${this.getPurchaseStatusText(purchaseInfo.status)}`;
-                            
-                            if (purchaseInfo.estimatedDelivery) {
-                                const deliveryDate = new Date(purchaseInfo.estimatedDelivery);
-                                result += `, Tahmini Teslimat: ${deliveryDate.toLocaleDateString('tr-TR')}`;
-                            }
-                        }
-                        
-                        result += "\n";
-                    });
-                }
-            } else {
-                result += "\n✅ Sipariş için tüm malzemeler hazır.";
-            }
-            
-            return result;
-            
-        } catch (error) {
-            Logger.error(`Sipariş malzeme durumu kontrol hatası: ${error.message}`, error);
-            return "\n\n⚠️ Malzeme durumu kontrol edilirken bir hata oluştu.";
-        }
-    }
-    
-    /**
-     * Belirli bir sipariş için üretim durumunu kontrol eder
-     * @param {string} orderId Sipariş ID'si
-     * @returns {string} Üretim durumu açıklaması veya boş string
-     */
-    async checkOrderProductionStatus(orderId) {
-        try {
-            if (!this.erpService || typeof this.erpService.getProductionData !== 'function') {
-                return "";
-            }
-            
-            const productionData = await this.erpService.getProductionData();
-            
-            if (!productionData || !Array.isArray(productionData)) {
-                return "";
-            }
-            
-            // Siparişle ilgili iş emirlerini bul
-            const productionJobs = productionData.filter(job => 
-                job.orderId === orderId ||
-                job.orderNo === orderId ||
-                job.orderNo === `SO-${orderId}` ||
-                job.orderNo === `SO:${orderId}`
-            );
-            
-            if (!productionJobs || productionJobs.length === 0) {
-                return "\n\n🏭 **Üretim Durumu:**\n- Henüz üretim planı oluşturulmamış.";
-            }
-            
-            let result = "\n\n🏭 **Üretim Durumu:**\n";
-            
-            // Üretim aşamaları sayısı
-            const completedStages = productionJobs.filter(job => job.status === 'completed').length;
-            const activeStages = productionJobs.filter(job => job.status === 'active').length;
-            const pendingStages = productionJobs.filter(job => job.status === 'pending').length;
-            const totalStages = productionJobs.length;
-            
-            // Yüzde hesapla
-            const completionPercentage = Math.round((completedStages / totalStages) * 100);
-            
-            result += `- Genel İlerleme: %${completionPercentage}\n`;
-            result += `- Tamamlanan Adımlar: ${completedStages}/${totalStages}\n`;
-            
-            if (activeStages > 0) {
-                result += `- Devam Eden Adımlar: ${activeStages}\n`;
-                
-                // Aktif işleri ekle
-                const activeJobs = productionJobs.filter(job => job.status === 'active');
-                
-                result += "\n**Şu Anda Devam Eden İşlemler:**\n";
-                
-                activeJobs.forEach(job => {
-                    result += `- ${job.step || job.taskName || 'İş'}`;
-                    
-                    if (job.assignedTo) {
-                        result += `, Sorumlu: ${job.assignedTo}`;
-                    }
-                    
-                    if (job.unitId) {
-                        result += `, Birim: ${this.getUnitName(job.unitId)}`;
-                    }
-                    
-                    if (job.startTime) {
-                        const startDate = new Date(job.startTime);
-                        const daysPassed = Math.floor((new Date() - startDate) / (1000 * 60 * 60 * 24));
-                        
-                        if (daysPassed === 0) {
-                            result += `, Bugün başladı`;
-                        } else if (daysPassed === 1) {
-                            result += `, Dün başladı`;
-                        } else {
-                            result += `, ${daysPassed} gün önce başladı`;
-                        }
-                    }
-                    
-                    result += "\n";
-                });
-            }
-            
-            if (pendingStages > 0) {
-                result += `\n- Bekleyen Adımlar: ${pendingStages}\n`;
-                
-                // Bekleyen bir sonraki işlemi göster
-                const nextJob = productionJobs.find(job => job.status === 'pending');
-                
-                if (nextJob) {
-                    result += `\n**Sıradaki İşlem:** ${nextJob.step || nextJob.taskName || 'İş'}`;
-                    
-                    if (nextJob.unitId) {
-                        result += `, Birim: ${this.getUnitName(nextJob.unitId)}`;
-                    }
-                    
-                    if (nextJob.estimatedStartTime) {
-                        const startDate = new Date(nextJob.estimatedStartTime);
-                        result += `, Planlanan Başlangıç: ${startDate.toLocaleDateString('tr-TR')}`;
-                    }
-                }
-            }
-            
-            // Tahmini tamamlanma zamanı
-            if (activeStages > 0 || pendingStages > 0) {
-                const lastJob = productionJobs[productionJobs.length - 1];
-                
-                if (lastJob && lastJob.endTime) {
-                    const endDate = new Date(lastJob.endTime);
-                    result += `\n\n**Tahmini Tamamlanma Tarihi:** ${endDate.toLocaleDateString('tr-TR')}`;
-                    
-                    // Gecikme kontrolü
-                    const order = await this.erpService.getOrderById(orderId);
-                    
-                    if (order && order.deliveryDate) {
-                        const deliveryDate = new Date(order.deliveryDate);
-                        
-                        if (endDate > deliveryDate) {
-                            const daysLate = Math.ceil((endDate - deliveryDate) / (1000 * 60 * 60 * 24));
-                            result += `\n⚠️ **Uyarı:** Üretim planlanan teslimat tarihinden ${daysLate} gün geç tamamlanacak.`;
-                        } else {
-                            result += `\n✅ Üretim planlanan teslimat tarihinden önce tamamlanacak.`;
-                        }
-                    }
-                }
-            }
-            
-            return result;
-            
-        } catch (error) {
-            Logger.error(`Sipariş üretim durumu kontrol hatası: ${error.message}`, error);
-            return "\n\n⚠️ Üretim durumu kontrol edilirken bir hata oluştu.";
-        }
-    }
-    
-    /**
-     * Birim ID'sine göre birim adını döndürür
-     * @param {string} unitId Birim ID'si
-     * @returns {string} Birim adı
-     */
-    getUnitName(unitId) {
-        const unitMap = {
-            'elektrik_tasarim': 'Elektrik Tasarım',
-            'mekanik_tasarim': 'Mekanik Tasarım',
-            'satin_alma': 'Satın Alma',
-            'mekanik_uretim': 'Mekanik Üretim',
-            'ic_montaj': 'İç Montaj',
-            'kablaj': 'Kablaj',
-            'genel_montaj': 'Genel Montaj',
-            'test': 'Test'
-        };
-        
-        return unitMap[unitId] || unitId;
-    }
-    
-    /**
-     * Satın alma durumu koduna göre durumu döndürür
-     * @param {string} status Durum kodu
-     * @returns {string} Durum açıklaması
-     */
-    getPurchaseStatusText(status) {
-        const statusMap = {
-            'pending': 'Beklemede',
-            'ordered': 'Sipariş Verildi',
-            'partial': 'Kısmi Teslimat',
-            'delivered': 'Teslim Alındı',
-            'cancelled': 'İptal Edildi',
-            'processing': 'İşlemde'
-        };
-        
-        return statusMap[status] || status;
-    }
-    
-    /**
-     * Özel bir sipariş sorusuna göre bilgi formatlar
-     * @param {object} order Sipariş bilgisi
-     * @param {string} question Soru türü ('delivery', 'status', vs.)
-     * @returns {string} Formatlanmış bilgi
-     */
-    formatSpecificOrderInfo(order, question) {
-        let result = "";
-        
-        switch (question) {
-            case 'delivery':
-                result = "\n\n📅 **Teslimat Bilgileri:**\n";
-                
-                if (order.deliveryDate) {
-                    const deliveryDate = new Date(order.deliveryDate);
-                    const now = new Date();
-                    const daysLeft = Math.ceil((deliveryDate - now) / (1000 * 60 * 60 * 24));
-                    
-                    result += `- Planlanan Teslimat Tarihi: ${deliveryDate.toLocaleDateString('tr-TR')}\n`;
-                    
-                    if (daysLeft > 0) {
-                        result += `- Teslimata kalan süre: ${daysLeft} gün`;
-                    } else if (daysLeft === 0) {
-                        result += `- Teslimat bugün gerçekleşecek`;
-                    } else {
-                        result += `- Teslimat ${Math.abs(daysLeft)} gün geçti`;
-                    }
-                } else {
-                    result += "Teslimat tarihi henüz belirlenmemiş.";
-                }
-                break;
-                
-            case 'status':
-                result = "\n\n🚦 **Detaylı Durum Bilgileri:**\n";
-                
-                result += `- Mevcut Durum: ${this.getOrderStatusText(order)}\n`;
-                
-                if (order.status === 'planning') {
-                    result += "- Sipariş planlama aşamasında, üretim süreci başlamadı.\n";
-                } else if (order.status === 'production') {
-                    result += "- Üretim süreci devam ediyor.\n";
-                } else if (order.status === 'waiting') {
-                    result += "- Sipariş üretim için beklemede.\n";
-                } else if (order.status === 'delayed') {
-                    result += "- Sipariş gecikmeli durumda.\n";
-                    
-                    if (order.delayReason) {
-                        result += `- Gecikme Nedeni: ${order.delayReason}\n`;
-                    }
-                } else if (order.status === 'completed') {
-                    result += "- Sipariş tamamlandı ve teslim edildi.\n";
-                    
-                    if (order.completionDate) {
-                        const completionDate = new Date(order.completionDate);
-                        result += `- Tamamlanma Tarihi: ${completionDate.toLocaleDateString('tr-TR')}\n`;
-                    }
-                }
-                
-                if (order.progress) {
-                    result += `- Genel İlerleme: %${order.progress}\n`;
-                }
-                break;
-                
-            case 'materials':
-                // Bu kısım checkOrderMaterialStatus tarafından daha detaylı işlenecek
-                result = "\n\nMalzeme bilgileri ayrıca kontrol ediliyor...";
-                break;
-                
-            case 'production':
-                // Bu kısım checkOrderProductionStatus tarafından daha detaylı işlenecek
-                result = "\n\nÜretim bilgileri ayrıca kontrol ediliyor...";
-                break;
-                
-            case 'customer':
-                result = "\n\n👤 **Müşteri Bilgileri:**\n";
-                
-                if (order.customer) {
-                    result += `- Müşteri: ${order.customer}\n`;
-                    
-                    // Müşteri detayları varsa ekle
-                    if (order.customerDetails) {
-                        const details = order.customerDetails;
-                        
-                        if (details.contactPerson) {
-                            result += `- İlgili Kişi: ${details.contactPerson}\n`;
-                        }
-                        
-                        if (details.phone) {
-                            result += `- Telefon: ${details.phone}\n`;
-                        }
-                        
-                        if (details.email) {
-                            result += `- E-posta: ${details.email}\n`;
-                        }
-                        
-                        if (details.address) {
-                            result += `- Adres: ${details.address}\n`;
-                        }
-                    }
-                } else {
-                    result += "Müşteri bilgisi bulunmamaktadır.";
-                }
-                break;
-                
-            default:
-                // Özel soru türü tanımlanmamış
-                result = "";
-        }
-        
-        return result;
-    }
-    
-    /**
-     * Yazıyor göstergesini göster
-     */
-    showTypingIndicator() {
-        this.typing = true;
-        this.typingIndicator.classList.add('active');
-    }
-    
-    /**
-     * Yazıyor göstergesini gizle
-     */
-    hideTypingIndicator() {
-        this.typing = false;
-        this.typingIndicator.classList.remove('active');
-    }
-    
-    /**
-     * Mesaj alanını en alta kaydır
-     */
-    scrollToBottom() {
+        messageElement.innerHTML = `
+            <div class="message-content">${content}</div>
+            <div class="message-time">${time}</div>
+        `;
+
+        this.messagesContainer.appendChild(messageElement);
         this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
     }
-    
-    /**
-     * Mesaj geçmişine ekle
-     * @param {string} sender - Gönderen ('user' veya 'bot')
-     * @param {string} message - Mesaj
-     */
-    addToMessageHistory(sender, message) {
-        const messageObj = {
-            id: this.generateMessageId(),
-            sender: sender,
-            message: message,
-            timestamp: new Date().toISOString()
-        };
-        
-        this.messageHistory.push(messageObj);
-        
-        // Mesaj geçmişini sınırla (son 50 mesaj)
-        if (this.messageHistory.length > 50) {
-            this.messageHistory = this.messageHistory.slice(-50);
-        }
-        
-        // Yerel depolamaya kaydet
-        this.saveMessageHistory();
-    }
-    
-    /**
-     * Mesaj ID'si oluştur
-     * @returns {string} - Mesaj ID'si
-     */
-    generateMessageId() {
-        return `msg_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    }
-    
-    /**
-     * Mesaj geçmişini yerel depolamaya kaydet
-     */
-    saveMessageHistory() {
-        window.Utils.LocalStorage.set('mets:chatHistory', this.messageHistory);
-    }
-    
-    /**
-     * Mesaj geçmişini yerel depolamadan yükle
-     */
-    loadMessageHistory() {
-        const savedHistory = window.Utils.LocalStorage.get('mets:chatHistory', []);
-        this.messageHistory = savedHistory;
-        
-        // Önceki mesajları ekrana yükle
-        if (this.messageHistory.length > 0) {
-            // Sadece son 10 mesajı göster
-            const recentMessages = this.messageHistory.slice(-10);
+
+    addWelcomeMessage() {
+        const welcomeMessage = `
+            Merhaba! Ben MehmetEndüstriyel'in yapay zeka asistanıyım. Size nasıl yardımcı olabilirim?
             
-            this.messagesContainer.innerHTML = '';
-            
-            recentMessages.forEach(msg => {
-                if (msg.sender === 'user') {
-                    const messageDiv = document.createElement('div');
-                    messageDiv.className = 'chat-message user-message';
-                    messageDiv.textContent = msg.message;
-                    
-                    const timeDiv = document.createElement('div');
-                    timeDiv.className = 'message-time';
-                    timeDiv.textContent = new Date(msg.timestamp).toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit'});
-                    
-                    messageDiv.appendChild(timeDiv);
-                    this.messagesContainer.appendChild(messageDiv);
-                } else {
-                    const messageDiv = document.createElement('div');
-                    messageDiv.className = 'chat-message bot-message';
-                    
-                    // Markdown formatlamasını işle
-                    if (msg.message.includes('**') || msg.message.includes('- ') || msg.message.includes('\n')) {
-                        // Basit markdown dönüşümünü yap
-                        let formattedMessage = msg.message
-                            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                            .replace(/\n- /g, '<br>• ')
-                            .replace(/\n/g, '<br>');
-                        
-                        messageDiv.innerHTML = formattedMessage;
-                    } else {
-                        messageDiv.textContent = msg.message;
-                    }
-                    
-                    const timeDiv = document.createElement('div');
-                    timeDiv.className = 'message-time';
-                    timeDiv.textContent = new Date(msg.timestamp).toLocaleTimeString('tr-TR', {hour: '2-digit', minute:'2-digit'});
-                    
-                    messageDiv.appendChild(timeDiv);
-                    this.messagesContainer.appendChild(messageDiv);
-                }
-            });
-            
-            // Mesaj alanını en alta kaydır
-            this.scrollToBottom();
-        }
-    }
-    
-    /**
-     * Bildirim göster
-     * @param {string} message - Bildirim mesajı
-     */
-    showNotification(message) {
-        // Bildirim desteğini kontrol et
-        if (!('Notification' in window)) {
-            return;
-        }
-        
-        // İzin kontrolü
-        if (Notification.permission === 'granted') {
-            // Bildirim göster
-            const notification = new Notification('M.E.T.S. Asistan', {
-                body: message,
-                icon: '/assets/images/logo.png'
-            });
-            
-            // Bildirime tıklandığında chatbot'u aç
-            notification.onclick = () => {
-                window.focus();
-                this.toggleChatbot();
-            };
-        } else if (Notification.permission !== 'denied') {
-            // İzin iste
-            Notification.requestPermission().then(permission => {
-                if (permission === 'granted') {
-                    this.showNotification(message);
-                }
-            });
-        }
-    }
-    
-    /**
-     * Çevrimdışı yanıt al
-     * @param {string} type - Yanıt tipi
-     * @returns {string} - Yanıt
-     */
-    getOfflineResponse(type) {
-        const responses = this.offlineResponses[type] || this.offlineResponses.unknownQuery;
-        const randomIndex = Math.floor(Math.random() * responses.length);
-        return responses[randomIndex];
-    }
-    
-    /**
-     * Üretim bilgilerini formatla
-     * @param {Array} productionData - Üretim verileri
-     * @param {string} query - Sorgu
-     * @returns {string} - Formatlanmış bilgi
-     */
-    formatProductionInfo(productionData, query) {
-        if (!productionData || productionData.length === 0) {
-            return "Üretim planı verisi bulunamadı. Lütfen ERP bağlantınızı kontrol edin.";
-        }
-        
-        // Sorguya göre filtreleme yap
-        let filteredProduction = productionData;
-        const lowerQuery = query.toLowerCase();
-        
-        // Belirli bir sipariş için üretim bilgisi aranıyorsa
-        if (lowerQuery.match(/[a-z0-9]{5,}/i)) {
-            const orderNoMatch = lowerQuery.match(/[a-z0-9]{5,}/i);
-            if (orderNoMatch) {
-                const searchOrderNo = orderNoMatch[0];
-                filteredProduction = productionData.filter(item => 
-                    (item.orderNo && item.orderNo.toLowerCase().includes(searchOrderNo.toLowerCase())) || 
-                    (item.orderId && item.orderId.toLowerCase().includes(searchOrderNo.toLowerCase()))
-                );
-            }
-        }
-        // Belirli bir aşamadaki üretimler aranıyorsa
-        else if (lowerQuery.includes('tasarım') || lowerQuery.includes('montaj') || 
-                lowerQuery.includes('test') || lowerQuery.includes('kablaj') ||
-                lowerQuery.includes('kaynak') || lowerQuery.includes('cnc') ||
-                lowerQuery.includes('kesim') || lowerQuery.includes('bükme')) {
-            let stageFilter = '';
-            
-            if (lowerQuery.includes('tasarım')) stageFilter = 'design';
-            else if (lowerQuery.includes('montaj')) stageFilter = 'assembly';
-            else if (lowerQuery.includes('test')) stageFilter = 'testing';
-            else if (lowerQuery.includes('kablaj')) stageFilter = 'wiring';
-            else if (lowerQuery.includes('kaynak')) stageFilter = 'welding';
-            else if (lowerQuery.includes('cnc')) stageFilter = 'cnc';
-            else if (lowerQuery.includes('kesim')) stageFilter = 'cutting';
-            else if (lowerQuery.includes('bükme')) stageFilter = 'bending';
-            
-            if (stageFilter) {
-                filteredProduction = productionData.filter(item => item.currentStage === stageFilter);
-            }
-        }
-        // Bugünkü üretim planı aranıyorsa
-        else if (lowerQuery.includes('bugün') || lowerQuery.includes('günün')) {
-            const today = new Date();
-            filteredProduction = productionData.filter(item => {
-                if (!item.scheduledDate) return false;
-                const scheduleDate = new Date(item.scheduledDate);
-                return scheduleDate.toDateString() === today.toDateString();
-            });
-            
-            return this.formatDailyProductionPlan(filteredProduction, today);
-        }
-        // Bu haftaki üretim planı aranıyorsa
-        else if (lowerQuery.includes('hafta')) {
-            const today = new Date();
-            const startOfWeek = new Date(today);
-            startOfWeek.setDate(today.getDate() - today.getDay());
-            startOfWeek.setHours(0, 0, 0, 0);
-            
-            const endOfWeek = new Date(startOfWeek);
-            endOfWeek.setDate(startOfWeek.getDate() + 6);
-            endOfWeek.setHours(23, 59, 59, 999);
-            
-            filteredProduction = productionData.filter(item => {
-                if (!item.scheduledDate) return false;
-                const scheduleDate = new Date(item.scheduledDate);
-                return scheduleDate >= startOfWeek && scheduleDate <= endOfWeek;
-            });
-            
-            return this.formatWeeklyProductionPlan(filteredProduction, startOfWeek, endOfWeek);
-        }
-        // Belirli bir kişiye atanan üretimler aranıyorsa
-        else if (lowerQuery.includes('sorumlu') || lowerQuery.includes('atanan')) {
-            const keywords = lowerQuery.split(' ').filter(word => 
-                word.length > 3 && 
-                !['sorumlu', 'atanan', 'üretim', 'planı', 'kişi', 'olan'].includes(word)
-            );
-            
-            if (keywords.length > 0) {
-                filteredProduction = productionData.filter(item => {
-                    if (!item.responsiblePerson) return false;
-                    const lowerResponsible = item.responsiblePerson.toLowerCase();
-                    return keywords.some(keyword => lowerResponsible.includes(keyword));
-                });
-            }
-        }
-        // Geciken üretimler aranıyorsa
-        else if (lowerQuery.includes('geciken') || lowerQuery.includes('geç') || lowerQuery.includes('gecikmeli')) {
-            const today = new Date();
-            filteredProduction = productionData.filter(item => {
-                if (!item.estimatedCompletion) return false;
-                const estimatedDate = new Date(item.estimatedCompletion);
-                return estimatedDate < today && item.status !== 'completed';
-            });
-            
-            // Gecikme süresine göre sırala
-            filteredProduction.sort((a, b) => {
-                const dateA = new Date(a.estimatedCompletion);
-                const dateB = new Date(b.estimatedCompletion);
-                return dateA - dateB; // En çok geciken en üstte
-            });
-            
-            return this.formatDelayedProductionInfo(filteredProduction);
-        }
-        // Özet bilgi isteniyorsa
-        else if (lowerQuery.includes('özet') || lowerQuery.includes('tüm') || lowerQuery.includes('genel')) {
-            return this.formatProductionSummary(productionData);
-        }
-        
-        // Sonuçları formatlama
-        if (filteredProduction.length === 0) {
-            return "Aradığınız kriterlere uygun üretim planı bulunamadı. Lütfen farklı anahtar kelimeler kullanarak tekrar deneyin.";
-        } else if (filteredProduction.length === 1) {
-            return this.formatDetailedProductionInfo(filteredProduction[0]);
-        } else if (filteredProduction.length <= 5) {
-            let response = `**${filteredProduction.length} adet üretim planı bulundu:**\n\n`;
-            
-            filteredProduction.forEach(item => {
-                const scheduleDate = new Date(item.scheduledDate).toLocaleDateString('tr-TR');
-                const estimatedCompletion = new Date(item.estimatedCompletion).toLocaleDateString('tr-TR');
-                const stageText = this.getProductionStageText(item.currentStage);
-                
-                response += `**${item.orderNo}** - ${item.productName || 'Belirtilmemiş'}\n`;
-                response += `- Planlanan Tarih: ${scheduleDate}\n`;
-                response += `- Tahmini Bitiş: ${estimatedCompletion}\n`;
-                response += `- Mevcut Aşama: ${stageText}\n`;
-                
-                if (item.completionRate !== undefined) {
-                    response += `- Tamamlanma: %${item.completionRate}\n`;
-                }
-                
-                if (item.responsiblePerson) {
-                    response += `- Sorumlu: ${item.responsiblePerson}\n`;
-                }
-                
-                response += '\n';
-            });
-            
-            return response;
-        } else {
-            let response = `**${filteredProduction.length} adet üretim planı bulundu.** İlk 5 tanesi:\n\n`;
-            
-            filteredProduction.slice(0, 5).forEach(item => {
-                const scheduleDate = new Date(item.scheduledDate).toLocaleDateString('tr-TR');
-                const stageText = this.getProductionStageText(item.currentStage);
-                
-                response += `**${item.orderNo}** - ${stageText} - ${scheduleDate} - %${item.completionRate || 0} tamamlandı\n`;
-            });
-            
-            response += `\nDaha detaylı bilgi için lütfen sorgunuzu daraltın. Örneğin: "S12345 üretim durumu" veya "montaj aşamasındaki üretimler".`;
-            return response;
-        }
-    }
-    
-    /**
-     * Detaylı üretim bilgisi formatla
-     * @param {Object} item - Üretim verisi
-     * @returns {string} - Formatlanmış bilgi
-     */
-    formatDetailedProductionInfo(item) {
-        if (!item) return "Üretim bilgisi bulunamadı.";
-        
-        const scheduleDate = new Date(item.scheduledDate).toLocaleDateString('tr-TR');
-        const estimatedCompletion = new Date(item.estimatedCompletion).toLocaleDateString('tr-TR');
-        const stageText = this.getProductionStageText(item.currentStage);
-        
-        let response = `**Üretim Planı: ${item.orderNo}**\n\n`;
-        
-        if (item.productName) {
-            response += `- Ürün: ${item.productName}\n`;
-        }
-        
-        response += `- Planlanan Başlangıç: ${scheduleDate}\n`;
-        response += `- Tahmini Bitiş: ${estimatedCompletion}\n`;
-        response += `- Mevcut Aşama: ${stageText}\n`;
-        
-        if (item.completionRate !== undefined) {
-            response += `- Tamamlanma Oranı: %${item.completionRate}\n`;
-        }
-        
-        if (item.responsiblePerson) {
-            response += `- Sorumlu: ${item.responsiblePerson}\n`;
-        }
-        
-        // Aşama detayları
-        if (item.stages && item.stages.length > 0) {
-            response += `\n**Üretim Aşamaları:**\n`;
-            
-            item.stages.forEach(stage => {
-                const stageText = this.getProductionStageText(stage.name);
-                let statusEmoji = '⬜';
-                
-                if (stage.status === 'completed') {
-                    statusEmoji = '✅';
-                } else if (stage.status === 'in_progress') {
-                    statusEmoji = '🔄';
-                } else if (stage.status === 'pending') {
-                    statusEmoji = '⏳';
-                }
-                
-                response += `${statusEmoji} ${stageText}`;
-                
-                if (stage.completionRate !== undefined) {
-                    response += ` - %${stage.completionRate}`;
-                }
-                
-                if (stage.startDate) {
-                    const startDate = new Date(stage.startDate).toLocaleDateString('tr-TR');
-                    response += ` - Başlangıç: ${startDate}`;
-                }
-                
-                if (stage.endDate) {
-                    const endDate = new Date(stage.endDate).toLocaleDateString('tr-TR');
-                    response += ` - Bitiş: ${endDate}`;
-                }
-                
-                response += '\n';
-            });
-        }
-        
-        // Malzeme durumu
-        if (item.materials && item.materials.length > 0) {
-            const missingMaterials = item.materials.filter(m => m.status === 'missing' || m.status === 'ordered');
-            
-            if (missingMaterials.length > 0) {
-                response += `\n**Eksik Malzemeler:**\n`;
-                
-                missingMaterials.forEach(material => {
-                    response += `- ${material.name || material.code}: `;
-                    
-                    if (material.status === 'missing') {
-                        response += `Eksik, tedarik edilmesi gerekiyor\n`;
-                    } else if (material.status === 'ordered') {
-                        response += `Sipariş edildi, bekleniyor\n`;
-                        
-                        if (material.expectedDate) {
-                            response += `  Beklenen Tarih: ${new Date(material.expectedDate).toLocaleDateString('tr-TR')}\n`;
-                        }
-                    }
-                });
-            }
-        }
-        
-        if (item.notes) {
-            response += `\n**Notlar:** ${item.notes}\n`;
-        }
-        
-        return response;
-    }
-    
-    /**
-     * Günlük üretim planını formatla
-     * @param {Array} productionItems - Günlük üretim verileri
-     * @param {Date} date - Tarih
-     * @returns {string} - Formatlanmış bilgi
-     */
-    formatDailyProductionPlan(productionItems, date) {
-        if (!productionItems || productionItems.length === 0) {
-            return `${date.toLocaleDateString('tr-TR')} tarihinde planlanan üretim bulunmamaktadır.`;
-        }
-        
-        let response = `**${date.toLocaleDateString('tr-TR')} Tarihli Üretim Planı**\n\n`;
-        
-        // Aşamalara göre grupla
-        const stageGroups = {};
-        
-        productionItems.forEach(item => {
-            const stage = item.currentStage || 'unknown';
-            if (!stageGroups[stage]) {
-                stageGroups[stage] = [];
-            }
-            stageGroups[stage].push(item);
-        });
-        
-        // Her aşama için üretimleri listele
-        for (const [stage, items] of Object.entries(stageGroups)) {
-            const stageText = this.getProductionStageText(stage);
-            response += `**${stageText} (${items.length} adet):**\n`;
-            
-            items.forEach(item => {
-                response += `- **${item.orderNo}** - ${item.productName || 'Belirtilmemiş'}\n`;
-                
-                if (item.completionRate !== undefined) {
-                    response += `  Tamamlanma: %${item.completionRate}\n`;
-                }
-                
-                response += '\n';
-            });
-            
-            response += '\n';
-        }
-        
-        return response;
-    }
-    
-    /**
-     * Haftalık üretim planını formatla
-     * @param {Array} productionItems - Haftalık üretim verileri
-     * @param {Date} startDate - Başlangıç tarihi
-     * @param {Date} endDate - Bitiş tarihi
-     * @returns {string} - Formatlanmış bilgi
-     */
-    formatWeeklyProductionPlan(productionItems, startDate, endDate) {
-        if (!productionItems || productionItems.length === 0) {
-            return `${startDate.toLocaleDateString('tr-TR')} - ${endDate.toLocaleDateString('tr-TR')} tarihleri arasında planlanan üretim bulunmamaktadır.`;
-        }
-        
-        let response = `**${startDate.toLocaleDateString('tr-TR')} - ${endDate.toLocaleDateString('tr-TR')} Tarihleri Arası Üretim Planı**\n\n`;
-        
-        // Günlere göre grupla
-        const dayGroups = {};
-        
-        productionItems.forEach(item => {
-            if (!item.scheduledDate) return;
-            
-            const scheduleDate = new Date(item.scheduledDate);
-            const dateStr = scheduleDate.toDateString();
-            
-            if (!dayGroups[dateStr]) {
-                dayGroups[dateStr] = [];
-            }
-            dayGroups[dateStr].push(item);
-        });
-        
-        // Her gün için üretimleri listele
-        const sortedDays = Object.keys(dayGroups).sort((a, b) => new Date(a) - new Date(b));
-        
-        for (const dateStr of sortedDays) {
-            const items = dayGroups[dateStr];
-            const date = new Date(dateStr);
-            const today = new Date();
-            
-            let dayHeader = `**${date.toLocaleDateString('tr-TR')}`;
-            if (date.toDateString() === today.toDateString()) {
-                dayHeader += ' (Bugün)';
-            }
-            dayHeader += ` - ${items.length} adet üretim:**\n`;
-            
-            response += dayHeader;
-            
-            items.forEach(item => {
-                const stageText = this.getProductionStageText(item.currentStage);
-                response += `- **${item.orderNo}** - ${item.productName || 'Belirtilmemiş'} - ${stageText} - %${item.completionRate || 0}\n`;
-            });
-            
-            response += '\n';
-        }
-        
-        return response;
-    }
-    
-    /**
-     * Geciken üretimler bilgisini formatla
-     * @param {Array} delayedProduction - Geciken üretimler
-     * @returns {string} - Formatlanmış bilgi
-     */
-    formatDelayedProductionInfo(delayedProduction) {
-        if (!delayedProduction || delayedProduction.length === 0) {
-            return "Geciken üretim bulunmamaktadır. Tüm üretimler zamanında tamamlanacak.";
-        }
-        
-        const today = new Date();
-        let response = `**Geciken Üretimler (${delayedProduction.length} adet):**\n\n`;
-        
-        delayedProduction.forEach(item => {
-            const estimatedDate = new Date(item.estimatedCompletion);
-            const delayDays = Math.floor((today - estimatedDate) / (1000 * 60 * 60 * 24));
-            
-            response += `**${item.orderNo}** - ${item.productName || 'Belirtilmemiş'}\n`;
-            response += `- Tahmini Bitiş: ${estimatedDate.toLocaleDateString('tr-TR')} (${delayDays} gün gecikme)\n`;
-            response += `- Mevcut Aşama: ${this.getProductionStageText(item.currentStage)}\n`;
-            
-            if (item.completionRate !== undefined) {
-                response += `- Tamamlanma: %${item.completionRate}\n`;
-            }
-            
-            if (item.responsiblePerson) {
-                response += `- Sorumlu: ${item.responsiblePerson}\n`;
-            }
-            
-            if (item.delayReason) {
-                response += `- Gecikme Nedeni: ${item.delayReason}\n`;
-            }
-            
-            response += '\n';
-        });
-        
-        return response;
-    }
-    
-    /**
-     * Üretim özet bilgisini formatla
-     * @param {Array} productionData - Tüm üretim verileri
-     * @returns {string} - Formatlanmış özet bilgi
-     */
-    formatProductionSummary(productionData) {
-        if (!productionData || productionData.length === 0) {
-            return "Üretim verisi bulunamadı.";
-        }
-        
-        // Aşama bazlı gruplama
-        const stageCounts = {};
-        let delayedCount = 0;
-        const today = new Date();
-        
-        productionData.forEach(item => {
-            // Aşama sayıları
-            if (item.currentStage) {
-                stageCounts[item.currentStage] = (stageCounts[item.currentStage] || 0) + 1;
-            }
-            
-            // Gecikme kontrolü
-            if (item.estimatedCompletion) {
-                const estimatedDate = new Date(item.estimatedCompletion);
-                if (estimatedDate < today && item.status !== 'completed') {
-                    delayedCount++;
-                }
-            }
-        });
-        
-        // Özet bilgi oluştur
-        let response = `**Üretim Durumu Özeti**\n\n`;
-        response += `Toplam ${productionData.length} adet üretim planı bulunmaktadır.\n`;
-        
-        if (delayedCount > 0) {
-            response += `**${delayedCount} adet üretim gecikmiş durumda**\n`;
-        }
-        
-        response += `\n**Aşama Bazlı Dağılım:**\n\n`;
-        
-        const stageNames = {
-            'design': 'Tasarım',
-            'procurement': 'Satın Alma',
-            'cutting': 'Kesim',
-            'bending': 'Bükme',
-            'welding': 'Kaynak',
-            'cnc': 'CNC İşleme',
-            'assembly': 'Montaj',
-            'wiring': 'Kablaj',
-            'testing': 'Test',
-            'packaging': 'Paketleme',
-            'quality_control': 'Kalite Kontrol'
-        };
-        
-        for (const [stage, count] of Object.entries(stageCounts)) {
-            const stageText = stageNames[stage] || stage;
-            response += `- ${stageText}: ${count} üretim\n`;
-        }
-        
-        // Bugünkü üretimler
-        const todayProduction = productionData.filter(item => {
-            if (!item.scheduledDate) return false;
-            const scheduleDate = new Date(item.scheduledDate);
-            return scheduleDate.toDateString() === today.toDateString();
-        });
-        
-        if (todayProduction.length > 0) {
-            response += `\n**Bugün Planlanan Üretimler (${todayProduction.length} adet):**\n\n`;
-            
-            todayProduction.slice(0, 5).forEach(item => {
-                const stageText = this.getProductionStageText(item.currentStage);
-                response += `- **${item.orderNo}** - ${item.productName || 'Belirtilmemiş'} - ${stageText} - %${item.completionRate || 0}\n`;
-            });
-            
-            if (todayProduction.length > 5) {
-                response += `... ve ${todayProduction.length - 5} üretim daha\n`;
-            }
-        }
-        
-        return response;
-    }
-    
-    /**
-     * Üretim aşaması metni al
-     * @param {string} stage - Aşama kodu
-     * @returns {string} - Aşama metni
-     */
-    getProductionStageText(stage) {
-        if (!stage) return "Bilinmiyor";
-        
-        switch(stage) {
-            case 'design': return '📐 Tasarım';
-            case 'procurement': return '🛒 Satın Alma';
-            case 'cutting': return '✂️ Kesim';
-            case 'bending': return '↩️ Bükme';
-            case 'welding': return '🔥 Kaynak';
-            case 'cnc': return '🔄 CNC İşleme';
-            case 'assembly': return '🔧 Montaj';
-            case 'wiring': return '🔌 Kablaj';
-            case 'testing': return '🔍 Test';
-            case 'packaging': return '📦 Paketleme';
-            case 'quality_control': return '✅ Kalite Kontrol';
-            default: return stage;
-        }
+            Örnek sorular:
+            - Sipariş durumunu nasıl öğrenebilirim?
+            - Üretim planı nedir?
+            - Stok durumu nasıl?
+        `;
+        this.addMessage(welcomeMessage, 'assistant');
     }
 }
 
-// Chatbot örneğini oluştur
 const chatbot = new Chatbot();
-
-// Global olarak erişilebilir yap
-window.Chatbot = chatbot;
-
-// ES modül uyumluluğu
+export const toggleChatbot = () => chatbot.toggleChat();
 export default chatbot;
+
+// Hoşgeldin mesajı göster
+function showWelcomeMessage() {
+    const chatBody = document.getElementById('chatbot-body');
+    if (!chatBody) return;
+    
+    const welcomeMessage = document.createElement('div');
+    welcomeMessage.className = 'chat-message bot';
+    welcomeMessage.innerHTML = `
+        <p>Merhaba! Ben Mehmet Endüstriyel Takip yapay zeka asistanıyım. Size nasıl yardımcı olabilirim?</p>
+        <p>Örnek sorular:</p>
+        <ul class="quick-questions">
+            <li><a href="#" class="quick-question" data-question="Üretimdeki siparişlerin durumu nedir?">Üretimdeki siparişlerin durumu nedir?</a></li>
+            <li><a href="#" class="quick-question" data-question="Hangi malzemelerde kritik eksiklik var?">Hangi malzemelerde kritik eksiklik var?</a></li>
+            <li><a href="#" class="quick-question" data-question="CB hücre tipi için üretim süresi tahmini nedir?">CB hücre tipi için üretim süresi tahmini nedir?</a></li>
+            <li><a href="#" class="quick-question" data-question="Üretimde gecikme riski olan siparişleri göster">Üretimde gecikme riski olan siparişleri göster</a></li>
+        </ul>
+    `;
+    chatBody.appendChild(welcomeMessage);
+    
+    // Hızlı soru bağlantılarına tıklama olayları ekle
+    welcomeMessage.querySelectorAll('.quick-question').forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            const question = this.getAttribute('data-question');
+            document.getElementById('chatbot-input').value = question;
+            sendChatMessage();
+        });
+    });
+}
+
+// Mesaj gönderme
+async function sendChatMessage() {
+    const input = document.getElementById('chatbot-input');
+    const message = input.value.trim();
+    
+    if (message === '') return;
+    
+    // Kullanıcı mesajını ekle
+    const chatBody = document.getElementById('chatbot-body');
+    const userMessageElement = document.createElement('div');
+    userMessageElement.className = 'chat-message user';
+    userMessageElement.textContent = message;
+    chatBody.appendChild(userMessageElement);
+    
+    // Input'u temizle
+    input.value = '';
+    
+    // Yanıt oluşturma (yapay zeka ile entegrasyon)
+    await generateBotResponse(message, chatBody);
+    
+    // Scroll to bottom
+    chatBody.scrollTop = chatBody.scrollHeight;
+}
+
+// Yapay zeka yanıtı oluşturma
+async function generateBotResponse(message, chatBody) {
+    try {
+        // Yükleniyor göster
+        const loadingElement = document.createElement('div');
+        loadingElement.className = 'chat-message bot';
+        loadingElement.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Yanıt hazırlanıyor...';
+        chatBody.appendChild(loadingElement);
+        
+        // Sohbet geçmişini al
+        const chatHistory = getChatHistory();
+        
+        // Bağlam verilerini topla
+        const context = await collectContextData(message);
+        Logger.info("Chatbot bağlam verileri toplandı", { 
+            messageLength: message.length, 
+            contextLength: context.length,
+            historyLength: chatHistory.length 
+        });
+        
+        // AI yanıtını al
+        let botResponse = '';
+        let responseSource = '';
+        
+        // Yanıt önceliği:
+        // 1. DeepSeek
+        // 2. OpenAI
+        // 3. AdvancedAI (yerel)
+        // 4. Demo yanıt
+        try {
+            // DeepSeek API entegrasyonu ile yanıt almaya çalış
+            if (window.AIIntegrationModule && typeof window.AIIntegrationModule.askDeepSeek === 'function') {
+                Logger.info("DeepSeek AI modeli kullanılıyor");
+                
+                botResponse = await window.AIIntegrationModule.askDeepSeek(message, context);
+                responseSource = 'deepseek';
+                Logger.info("DeepSeek yanıtı alındı", { responseLength: botResponse.length });
+            } else {
+                Logger.warn("DeepSeek AI modülü bulunamadı veya askDeepSeek fonksiyonu yok");
+                throw new Error("DeepSeek modülü bulunamadı");
+            }
+        } catch (deepseekError) {
+            Logger.warn("DeepSeek yanıtı alınamadı, OpenAI deneniyor", { error: deepseekError.message });
+            
+            try {
+                // OpenAI ile yanıt almaya çalış
+                if (window.AIIntegrationModule && typeof window.AIIntegrationModule.askOpenAI === 'function') {
+                    Logger.info("OpenAI modeli kullanılıyor");
+                    
+                    botResponse = await window.AIIntegrationModule.askOpenAI(message, context);
+                    responseSource = 'openai';
+                    Logger.info("OpenAI yanıtı alındı", { responseLength: botResponse.length });
+                } else {
+                    Logger.warn("OpenAI modülü bulunamadı veya askOpenAI fonksiyonu yok");
+                    throw new Error("OpenAI modülü bulunamadı");
+                }
+            } catch (openaiError) {
+                Logger.warn("OpenAI yanıtı alınamadı, AdvancedAI deneniyor", { error: openaiError.message });
+                
+                try {
+                    // Yerel AdvancedAI ile yanıt almaya çalış
+                    if (typeof AdvancedAI !== 'undefined' && typeof AdvancedAI.askQuestion === 'function') {
+                        Logger.info("AdvancedAI modülü kullanılıyor");
+                        
+                        botResponse = await AdvancedAI.askQuestion(message, context);
+                        responseSource = 'advanced';
+                        Logger.info("AdvancedAI yanıtı alındı", { responseLength: botResponse.length });
+                    } else {
+                        Logger.warn("AdvancedAI modülü bulunamadı veya askQuestion fonksiyonu yok");
+                        throw new Error("AdvancedAI modülü bulunamadı");
+                    }
+                } catch (advancedError) {
+                    Logger.warn("AdvancedAI yanıtı alınamadı, demo yanıt kullanılıyor", { error: advancedError.message });
+                    
+                    // Demo yanıt oluştur
+                    botResponse = generateDemoResponse(message);
+                    responseSource = 'demo';
+                    Logger.info("Demo yanıtı oluşturuldu", { responseLength: botResponse.length });
+                }
+            }
+        }
+        
+        // Yükleniyor mesajını kaldır
+        chatBody.removeChild(loadingElement);
+        
+        // Yanıtı işle ve göster
+        botResponse = botResponse || "Üzgünüm, bir yanıt oluşturulamadı. Lütfen daha sonra tekrar deneyin.";
+        
+        // Yanıt kaynağına göre stil belirle
+        let messageClass = 'chat-message bot';
+        if (responseSource === 'deepseek') {
+            messageClass += ' deepseek-response';
+        } else if (responseSource === 'openai') {
+            messageClass += ' openai-response';
+        } else if (responseSource === 'demo') {
+            messageClass += ' demo-response';
+        }
+        
+        // Yanıtı formatla (markdown ve html desteği)
+        botResponse = formatResponse(botResponse);
+        
+        // Gerçek yanıtı göster
+        const timestamp = new Date().toLocaleTimeString();
+        const botMessageElement = document.createElement('div');
+        botMessageElement.className = messageClass;
+        botMessageElement.innerHTML = `<span class="message-content">${botResponse}</span><span class="message-time">${timestamp}</span>`;
+        chatBody.appendChild(botMessageElement);
+        
+        // Otomatik scroll
+        chatBody.scrollTop = chatBody.scrollHeight;
+        
+        // Sohbet geçmişini kaydet
+        saveChatHistory({
+            role: 'assistant',
+            content: botResponse,
+            timestamp: new Date().toISOString(),
+            source: responseSource
+        });
+        
+        // Grafik ve veri görselleştirme işlemleri
+        processVisualizationRequests(message, botResponse, botMessageElement);
+        
+        // Yanıta dayalı önerilen işlemleri göster
+        if (botResponse.length > 50) {
+            suggestActionsBasedOnResponse(message, botResponse, chatBody);
+        }
+    } catch (error) {
+        Logger.error("Bot yanıtı oluşturulurken hata", { error: error.message });
+        
+        const errorElement = document.createElement('div');
+        errorElement.className = 'chat-message bot error';
+        errorElement.innerHTML = `<span class="message-content">Üzgünüm, bir hata oluştu: ${error.message}</span>`;
+        chatBody.appendChild(errorElement);
+        
+        // Otomatik scroll
+        chatBody.scrollTop = chatBody.scrollHeight;
+    }
+}
+
+// Yanıt formatı (markdown vs html dönüşümü)
+function formatResponse(response) {
+    // HTML etiketleri kontrolü
+    if (/<\/?[a-z][\s\S]*>/i.test(response)) {
+        return response; // Zaten HTML varsa dokunma
+    }
+    
+    // Basit markdown dönüşümleri
+    // Kalın metin
+    response = response.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // İtalik metin
+    response = response.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    // Başlıklar
+    response = response.replace(/#{3}(.*)/g, '<h3>$1</h3>');
+    response = response.replace(/#{2}(.*)/g, '<h2>$1</h2>');
+    response = response.replace(/#{1}(.*)/g, '<h1>$1</h1>');
+    // Listeler
+    response = response.replace(/- (.*)/g, '<li>$1</li>');
+    response = response.replace(/<li>(.*)<\/li>/g, '<ul><li>$1</li></ul>');
+    // Yeni satırlar
+    response = response.replace(/\n/g, '<br>');
+    
+    return response;
+}
+
+// Veri görselleştirme işlemleri
+function processVisualizationRequests(message, response, container) {
+    // Üretim verileri gösterme isteği kontrolü
+    if (message.toLowerCase().includes('üretim grafik') || 
+        message.toLowerCase().includes('üretim verilerini göster') ||
+        message.toLowerCase().includes('istatistik') ||
+        message.toLowerCase().includes('grafik')) {
+        
+        // Grafik elementi oluştur
+        const chartContainer = document.createElement('div');
+        chartContainer.className = 'chat-chart-container';
+        chartContainer.innerHTML = '<canvas id="chat-chart"></canvas>';
+        container.appendChild(chartContainer);
+        
+        // Örnek üretim verileri (gerçek uygulamada API'den alınır)
+        const productionData = {
+            labels: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran'],
+            datasets: [
+                {
+                    label: 'Tamamlanan Siparişler',
+                    data: [12, 19, 15, 20, 18, 22],
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Gecikmeli Siparişler',
+                    data: [2, 3, 1, 2, 1, 0],
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                }
+            ]
+        };
+        
+        // Chart.js ile grafik oluştur
+        setTimeout(() => {
+            const ctx = document.getElementById('chat-chart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: productionData,
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }, 100);
+    }
+}
+
+// İlgili bağlam verilerini topla
+async function collectContextData(message) {
+    let context = "";
+    
+    try {
+        Logger.info("Chatbot için bağlam verileri toplanıyor");
+        
+        // Temel veri kaynakları
+        let orders = null;
+        let materials = null;
+        let production = null;
+        let technicalData = null;
+        
+        // Sorgu içeriğini analiz et
+        const lowerCaseMessage = message.toLowerCase();
+        
+        // Eşleşecek anahtar kelimeler
+        const orderKeywords = ['sipariş', 'order', 'siparış', 'sıparış', 'musteri', 'müşteri', 'termin', 'teslim'];
+        const materialKeywords = ['malzeme', 'material', 'stok', 'stoğumuz', 'depo', 'tedarik', 'sipariş ver', 'eksik'];
+        const productionKeywords = ['üretim', 'production', 'imalat', 'montaj', 'gecik', 'tamamla', 'bitir', 'başla', 'durum'];
+        const technicalKeywords = ['teknik', 'technical', 'hücre', 'role', 'röle', 'nominal', 'cell', 'cb', 'lb', 'fl', 'rmu', 'volt', 'ampere'];
+        
+        // Sipariş numarası formatını kontrol et (örn: 2405xx14, 24-05-xx-14, vb.)
+        const orderNumberPattern = /\b(24|20)[-]?(\d{2})[-]?([A-Za-z0-9]{2,4})[-]?(\d{1,4})\b/;
+        const hasOrderNumber = orderNumberPattern.test(message);
+        
+        // Sipariş numarasını ayıkla
+        let orderNumberMatch = message.match(orderNumberPattern);
+        let orderNumber = orderNumberMatch ? orderNumberMatch[0] : null;
+        
+        // Anahtar kelime kontrolü
+        const containsOrderKeywords = orderKeywords.some(keyword => lowerCaseMessage.includes(keyword)) || hasOrderNumber;
+        const containsMaterialKeywords = materialKeywords.some(keyword => lowerCaseMessage.includes(keyword));
+        const containsProductionKeywords = productionKeywords.some(keyword => lowerCaseMessage.includes(keyword));
+        const containsTechnicalKeywords = technicalKeywords.some(keyword => lowerCaseMessage.includes(keyword));
+        
+        // Paralel olarak tüm gerekli verileri topla
+        const dataPromises = [];
+        
+        // Aktif siparişleri al
+        if (containsOrderKeywords) {
+            dataPromises.push(fetchActiveOrders().then(data => orders = data));
+        }
+        
+        // Malzeme bilgilerini al
+        if (containsMaterialKeywords) {
+            dataPromises.push(fetchCriticalMaterials().then(data => materials = data));
+        }
+        
+        // Üretim durumunu al
+        if (containsProductionKeywords) {
+            dataPromises.push(fetchProductionStatus().then(data => production = data));
+        }
+        
+        // Teknik bilgileri al
+        if (containsTechnicalKeywords) {
+            dataPromises.push(fetchTechnicalData().then(data => technicalData = data));
+        }
+        
+        // Belirli bir sipariş sorgulanıyorsa
+        if (orderNumber) {
+            dataPromises.push(fetchSpecificOrderDetails(orderNumber).then(data => {
+                if (data) {
+                    orders = orders || [];
+                    // Eğer bu sipariş henüz orders listesinde yoksa ekle
+                    if (!orders.some(order => order.orderNumber === data.orderNumber)) {
+                        orders.push(data);
+                    }
+                }
+            }));
+        }
+        
+        // Tüm veri toplamalarının tamamlanmasını bekle
+        await Promise.all(dataPromises);
+        
+        // Bağlam bilgisi oluştur
+        if (orders && orders.length > 0) {
+            context += "Aktif Siparişler:\n";
+            orders.forEach((order, index) => {
+                context += `${index + 1}. Sipariş No: ${order.orderNumber}, Müşteri: ${order.customer}, Hücre Tipi: ${order.cellType}, Durum: ${order.status}\n`;
+                
+                // Sipariş detaylarını ekle
+                if (order.deliveryDate) context += `   Teslim Tarihi: ${order.deliveryDate}\n`;
+                if (order.quantity) context += `   Miktar: ${order.quantity} adet\n`;
+                if (order.progress) context += `   İlerleme: ${order.progress}%\n`;
+                if (order.currentStage) context += `   Mevcut Aşama: ${order.currentStage}\n`;
+                if (order.notes) context += `   Notlar: ${order.notes}\n`;
+            });
+        }
+        
+        if (materials && materials.length > 0) {
+            context += "\nKritik Malzemeler:\n";
+            materials.forEach((material, index) => {
+                context += `${index + 1}. Kod: ${material.code}, Ad: ${material.name}, Stok: ${material.stock}, Gerekli: ${material.required}\n`;
+                
+                // Tedarik durumu bilgisi varsa ekle
+                if (material.supplyStatus) context += `   Tedarik Durumu: ${material.supplyStatus}\n`;
+                if (material.expectedDelivery) context += `   Beklenen Teslimat: ${material.expectedDelivery}\n`;
+            });
+        }
+        
+        if (production) {
+            context += "\nÜretim Durumu:\n";
+            context += `Devam Eden Siparişler: ${production.inProgress}\n`;
+            context += `Geciken Siparişler: ${production.delayed}\n`;
+            context += `Tamamlanan Siparişler (Bu Ay): ${production.completed}\n`;
+            
+            // Üretim kapasitesi/verimlilik bilgisi varsa ekle
+            if (production.capacity) context += `Günlük Üretim Kapasitesi: ${production.capacity} birim\n`;
+            if (production.efficiency) context += `Üretim Verimliliği: ${production.efficiency}%\n`;
+            
+            // Üretim aşamalarında bekleyen sipariş sayısı
+            if (production.stageStats) {
+                context += "\nÜretim Aşaması İstatistikleri:\n";
+                Object.entries(production.stageStats).forEach(([stage, count]) => {
+                    context += `   ${stage}: ${count} sipariş\n`;
+                });
+            }
+        }
+        
+        if (technicalData) {
+            context += "\nTeknik Veriler:\n";
+            Object.entries(technicalData).forEach(([key, value]) => {
+                context += `${key}: ${value}\n`;
+            });
+        }
+        
+        // "Geciken sipariş var mı?" gibi sorulara özgü ek bağlam ekle
+        if (lowerCaseMessage.includes('gecik') && 
+            (lowerCaseMessage.includes('sipariş') || lowerCaseMessage.includes('order'))) {
+            try {
+                const delayedOrders = await fetchDelayedOrders();
+                if (delayedOrders && delayedOrders.length > 0) {
+                    context += "\nGeciken Siparişler Detayı:\n";
+                    delayedOrders.forEach((order, index) => {
+                        context += `${index + 1}. Sipariş No: ${order.orderNumber}, Müşteri: ${order.customer}, Gecikme: ${order.delayDays} gün\n`;
+                        if (order.delayReason) context += `   Gecikme Sebebi: ${order.delayReason}\n`;
+                        if (order.newEstimatedDelivery) context += `   Yeni Tahmini Teslim: ${order.newEstimatedDelivery}\n`;
+                    });
+                } else {
+                    context += "\nŞu anda geciken sipariş bulunmamaktadır.\n";
+                }
+            } catch (error) {
+                Logger.error("Geciken sipariş bilgileri alınırken hata", { error: error.message });
+            }
+        }
+        
+        Logger.info("Bağlam verileri toplama tamamlandı", { contextLength: context.length });
+        return context;
+        
+    } catch (error) {
+        Logger.error("Bağlam verisi toplanırken hata", { error: error.message });
+        console.error("Bağlam verisi toplanırken hata:", error);
+        return "Veri toplama hatası: " + error.message;
+    }
+}
+
+// Belirli bir sipariş detaylarını getir
+async function fetchSpecificOrderDetails(orderNumber) {
+    try {
+        // Gerçek uygulamada API çağrısı yapılır
+        // Demo amaçlı sabit veri
+        const allOrders = [
+            { 
+                orderNumber: "0424-1251", 
+                customer: "AYEDAŞ", 
+                cellType: "RM 36 CB", 
+                status: "Üretimde",
+                deliveryDate: "15.07.2024",
+                quantity: 5,
+                progress: 45,
+                currentStage: "Montaj",
+                notes: "Müşteri acil olduğunu belirtti"
+            },
+            { 
+                orderNumber: "0424-1245", 
+                customer: "BEDAŞ", 
+                cellType: "RM 36 CB", 
+                status: "Malzeme Bekliyor",
+                deliveryDate: "22.07.2024",
+                quantity: 3,
+                progress: 15,
+                currentStage: "Malzeme Tedarik",
+                notes: "Röle tedarikinde gecikme yaşanıyor"
+            },
+            { 
+                orderNumber: "0424-1239", 
+                customer: "TEİAŞ", 
+                cellType: "RM 36 LB", 
+                status: "Üretimde",
+                deliveryDate: "10.08.2024",
+                quantity: 10,
+                progress: 30,
+                currentStage: "Kablaj",
+                notes: ""
+            },
+            { 
+                orderNumber: "2405-1234", 
+                customer: "UEDAŞ", 
+                cellType: "RM 36 FL", 
+                status: "Planlama",
+                deliveryDate: "25.08.2024",
+                quantity: 7,
+                progress: 5,
+                currentStage: "Tasarım",
+                notes: "Müşteri teknik detayları revize etti"
+            }
+        ];
+        
+        // OrderNumber ile eşleşen siparişi bul
+        const order = allOrders.find(order => 
+            order.orderNumber === orderNumber || 
+            order.orderNumber.replace(/[-]/g, '') === orderNumber
+        );
+        
+        return order || null;
+    } catch (error) {
+        console.error("Sipariş detayları alınırken hata:", error);
+        return null;
+    }
+}
+
+// Geciken siparişleri getir
+async function fetchDelayedOrders() {
+    try {
+        // Gerçek uygulamada API çağrısı yapılır
+        // Demo amaçlı sabit veri
+        return [
+            { 
+                orderNumber: "0424-1201", 
+                customer: "EDAŞ A.Ş.", 
+                cellType: "RM 36 CB", 
+                status: "Gecikme",
+                delayDays: 5,
+                delayReason: "Malzeme tedarikinde yaşanan sorunlar",
+                newEstimatedDelivery: "20.07.2024"
+            },
+            { 
+                orderNumber: "0424-1187", 
+                customer: "Enerji Ltd.", 
+                cellType: "RM 36 RMU", 
+                status: "Gecikme",
+                delayDays: 3,
+                delayReason: "Üretim kapasitesi aşıldı",
+                newEstimatedDelivery: "16.07.2024"
+            }
+        ];
+    } catch (error) {
+        console.error("Geciken sipariş verileri alınırken hata:", error);
+        return [];
+    }
+}
+
+// Teknik veri bilgilerini getir
+async function fetchTechnicalData() {
+    try {
+        // Gerçek uygulamada API çağrısı yapılır
+        // Demo amaçlı sabit veri
+        return {
+            "CB_Hücre_Veri": "Orta gerilim kesicili hücre, 36kV, 31.5kA, 1250A nominal akım kapasitesi",
+            "LB_Hücre_Veri": "Orta gerilim yük ayırıcılı hücre, 36kV, 25kA, 630A nominal akım kapasitesi",
+            "FL_Hücre_Veri": "Orta gerilim sigortalı hücre, 36kV, 200A limit akım",
+            "RMU_Hücre_Veri": "Ring Main Unit, kompakt metal muhafazalı gaz izoleli şalt cihazı, 36kV"
+        };
+    } catch (error) {
+        console.error("Teknik veri bilgileri alınırken hata:", error);
+        return null;
+    }
+}
+
+// Aktif siparişleri getir
+async function fetchActiveOrders() {
+    try {
+        // Gerçek uygulamada API çağrısı yapılır
+        // Demo amaçlı sabit veri
+        return [
+            { orderNumber: "0424-1251", customer: "AYEDAŞ", cellType: "RM 36 CB", status: "Üretimde" },
+            { orderNumber: "0424-1245", customer: "BEDAŞ", cellType: "RM 36 CB", status: "Malzeme Bekliyor" },
+            { orderNumber: "0424-1239", customer: "TEİAŞ", cellType: "RM 36 LB", status: "Üretimde" }
+        ];
+    } catch (error) {
+        console.error("Sipariş verileri alınırken hata:", error);
+        return [];
+    }
+}
+
+// Kritik malzemeleri getir
+async function fetchCriticalMaterials() {
+    try {
+        // Gerçek uygulamada API çağrısı yapılır
+        // Demo amaçlı sabit veri
+        return [
+            { code: "137998%", name: "Siemens 7SR1003-1JA20-2DA0+ZY20 24VDC", stock: 2, required: 8 },
+            { code: "144866%", name: "KAP-80/190-95 Akım Trafosu", stock: 3, required: 5 },
+            { code: "120170%", name: "M480TB/G-027-95.300UN5 Kablo Başlığı", stock: 12, required: 15 }
+        ];
+    } catch (error) {
+        console.error("Malzeme verileri alınırken hata:", error);
+        return [];
+    }
+}
+
+// Üretim durumunu getir
+async function fetchProductionStatus() {
+    try {
+        // Gerçek uygulamada API çağrısı yapılır
+        // Demo amaçlı detaylı veri
+        return {
+            inProgress: 18,
+            delayed: 3,
+            completed: 42,
+            capacity: 25, // Günlük kapasite
+            efficiency: 89, // Üretim verimliliği
+            
+            // Üretim aşamalarına göre istatistikler
+            stageStats: {
+                "Tasarım": 4,
+                "Malzeme Tedarik": 7,
+                "Mekanik Üretim": 5,
+                "Montaj": 8,
+                "Kablaj": 3,
+                "Test": 6
+            },
+            
+            // Gecikme istatistikleri
+            delayStats: {
+                "Malzeme Tedarik Gecikmesi": 2,
+                "Personel Eksikliği": 1,
+                "Teknik Sorun": 0,
+                "Müşteri Değişikliği": 1
+            },
+            
+            // Üretim süresi ortalamaları (gün cinsinden)
+            averageTimes: {
+                "RM 36 CB": 18.5,
+                "RM 36 LB": 15.2,
+                "RM 36 FL": 20.3,
+                "RM 36 RMU": 12.8
+            },
+            
+            // Önümüzdeki dönem için üretim tahmini
+            forecast: {
+                "Gelecek Hafta": 12,
+                "Gelecek Ay": 48,
+                "Üç Aylık Dönem": 140
+            }
+        };
+    } catch (error) {
+        console.error("Üretim durumu alınırken hata:", error);
+        return null;
+    }
+}
+
+// Demo yanıt oluştur (Yapay Zeka mevcut değilse)
+function generateDemoResponse(message) {
+    message = message.toLowerCase();
+    
+    if (message.includes('merhaba') || message.includes('selam')) {
+        return 'Merhaba! Size nasıl yardımcı olabilirim?';
+    } else if (message.includes('sipariş') && message.includes('durum')) {
+        return 'Aktif siparişlerinizi kontrol ediyorum... AYEDAŞ siparişi (24-03-A001) üretim aşamasında, BAŞKENT EDAŞ siparişi (24-03-B002) için malzeme tedarik sorunu bulunuyor.';
+    } else if (message.includes('malzeme') || message.includes('stok')) {
+        return 'Stok durumunu kontrol ediyorum... Kablo başlıkları ve gerilim gösterge malzemelerinde eksiklik var. Satın alma departmanı tedarik işlemlerini yürütüyor.';
+    } else if (message.includes('üretim') && message.includes('süre')) {
+        return 'Orta gerilim hücrelerinin üretim süreleri: CB tipi ~18 gün, LB tipi ~15 gün, FL tipi ~20 gün. Bu süreler; malzeme tedariki, mekanik üretim, montaj ve test süreçlerini içermektedir.';
+    } else if (message.includes('kritik') || message.includes('acil')) {
+        return 'Kritik durum listesi: Siemens 7SR1003-1JA20-2DA0+ZY20 24VDC rölesinde kritik stok seviyesi (2 adet kaldı, 8 adet gerekli). AYEDAŞ siparişi için tedarik bekliyor.';
+    } else if (message.includes('teknik') || message.includes('hücre')) {
+        return 'RM 36 serisi hücre tipleri: CB (Kesicili), LB (Yük Ayırıcılı), FL (Kontaktör+Sigortalı), RMU (Ring Main Unit). Nominal gerilim 36kV, kısa devre akımı 31.5kA, nominal akım 630-1250A arasında değişmektedir.';
+    } else if (message.includes('analiz') || message.includes('rapor')) {
+        return 'Son 6 ayın üretim analizi: 218 adet hücre tamamlandı (42 CB, 96 LB, 68 FL, 12 RMU). Ortalama tamamlanma süresi 17 gün. Gecikme oranı %8. Öncelikli iyileştirme alanı: Kablaj süreçleri.';
+    } else if (message.includes('tedarikçi') || message.includes('satın alma')) {
+        return 'En aktif tedarikçiler: 1) Elektrik Malzemeleri A.Ş. (Koruma röleleri) 2) Mekanik Parçalar Ltd. (Metal kasalar) 3) Kablo Sistemleri (Güç kabloları). En uzun tedarik süresi: İthal röle bileşenleri (ortalama 45 gün).';
+    } else {
+        return 'Bu konu hakkında şu anda detaylı bilgi sunamıyorum. Sorgunuzu daha spesifik hale getirmeyi veya başka bir konuda yardım istemeyi deneyebilirsiniz.';
+    }
+}
+
+// Yanıta göre eylem öner
+function suggestActionsBasedOnResponse(message, response, chatBody) {
+    const actionButtons = document.createElement('div');
+    actionButtons.className = 'action-buttons';
+    
+    // Sipariş durumu ile ilgili ise
+    if (message.toLowerCase().includes('sipariş') || message.toLowerCase().includes('order')) {
+        actionButtons.innerHTML = `
+            <button class="action-btn" onclick="window.location.href='#orders-page'">
+                <i class="fas fa-clipboard-list"></i> Sipariş Listesi
+            </button>
+            <button class="action-btn" onclick="window.showCreateOrderModal()">
+                <i class="fas fa-plus"></i> Yeni Sipariş
+            </button>
+        `;
+    }
+    
+    // Malzeme ve stok ile ilgili ise
+    else if (message.toLowerCase().includes('malzeme') || message.toLowerCase().includes('stok') || message.toLowerCase().includes('material')) {
+        actionButtons.innerHTML = `
+            <button class="action-btn" onclick="window.location.href='#inventory-page'">
+                <i class="fas fa-boxes"></i> Stok Yönetimi
+            </button>
+            <button class="action-btn" onclick="window.location.href='#purchasing-page'">
+                <i class="fas fa-shopping-cart"></i> Satın Alma
+            </button>
+        `;
+    }
+    
+    // Üretim ile ilgili ise
+    else if (message.toLowerCase().includes('üretim') || message.toLowerCase().includes('production')) {
+        actionButtons.innerHTML = `
+            <button class="action-btn" onclick="window.location.href='#production-page'">
+                <i class="fas fa-industry"></i> Üretim Takibi
+            </button>
+            <button class="action-btn" onclick="window.showProductionPlan()">
+                <i class="fas fa-calendar-alt"></i> Üretim Planı
+            </button>
+        `;
+    }
+    
+    // Teknik bilgiler ile ilgili ise
+    else if (message.toLowerCase().includes('teknik') || message.toLowerCase().includes('hücre') || message.toLowerCase().includes('cell')) {
+        actionButtons.innerHTML = `
+            <button class="action-btn" onclick="window.location.href='#technical-page'">
+                <i class="fas fa-cogs"></i> Teknik Dökümanlar
+            </button>
+            <button class="action-btn" onclick="window.showTechnicalSpecs()">
+                <i class="fas fa-file-alt"></i> Teknik Şartnameler
+            </button>
+        `;
+    }
+    
+    // Analiz ve rapor ile ilgili ise
+    else if (message.toLowerCase().includes('analiz') || message.toLowerCase().includes('rapor')) {
+        actionButtons.innerHTML = `
+            <button class="action-btn" onclick="window.location.href='#dashboard-page'">
+                <i class="fas fa-chart-bar"></i> Dashboard
+            </button>
+            <button class="action-btn" onclick="window.showReports()">
+                <i class="fas fa-file-excel"></i> Raporlar
+            </button>
+        `;
+    }
+    
+    // Eylem butonları varsa ekle
+    if (actionButtons.innerHTML.trim() !== '') {
+        chatBody.appendChild(actionButtons);
+    }
+}
+
+// Chatbot UI bileşenini oluştur
+function createChatbotUIIfNeeded() {
+    if (document.getElementById('chatbot-window')) return;
+    
+    // Stil ekle
+    const style = document.createElement('style');
+    style.textContent = `
+        /* Chatbot Stilleri */
+        .ai-chatbot-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: #1e40af;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            transition: all 0.3s ease;
+        }
+        
+        .ai-chatbot-btn:hover {
+            transform: scale(1.1);
+            background-color: #1e3a8a;
+        }
+        
+        .notification-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background-color: #ef4444;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .chatbot-window {
+            position: fixed;
+            bottom: 90px;
+            right: 20px;
+            width: 350px;
+            height: 500px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .chatbot-header {
+            background-color: #1e40af;
+            color: white;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        
+        .chatbot-title {
+            font-weight: bold;
+            font-size: 16px;
+        }
+        
+        .chatbot-controls {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .chatbot-btn {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+        }
+        
+        .chatbot-btn:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+        
+        .chatbot-body {
+            flex-grow: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        
+        .chatbot-footer {
+            padding: 10px 15px;
+            display: flex;
+            gap: 10px;
+            border-top: 1px solid #e5e7eb;
+            flex-shrink: 0;
+        }
+        
+        .chatbot-input {
+            flex-grow: 1;
+            padding: 10px 15px;
+            border-radius: 20px;
+            border: 1px solid #d1d5db;
+            outline: none;
+            transition: border 0.2s ease;
+        }
+        
+        .chatbot-input:focus {
+            border-color: #1e40af;
+        }
+        
+        .chatbot-btn.send {
+            background-color: #1e40af;
+            color: white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+        }
+        
+        .chatbot-btn.send:hover {
+            background-color: #1e3a8a;
+        }
+        
+        .chat-message {
+            padding: 10px 15px;
+            border-radius: 10px;
+            max-width: 80%;
+            line-height: 1.5;
+        }
+        
+        .chat-message.user {
+            background-color: #1e40af;
+            color: white;
+            align-self: flex-end;
+        }
+        
+        .chat-message.bot {
+            background-color: #f3f4f6;
+            color: #1f2937;
+            align-self: flex-start;
+        }
+        
+        .chat-message.bot.error {
+            background-color: #fee2e2;
+            color: #b91c1c;
+        }
+        
+        .chat-message.bot.deepseek-response {
+            border-left: 4px solid #0891b2;
+        }
+        
+        .chat-message.bot.openai-response {
+            border-left: 4px solid #059669;
+        }
+        
+        .chat-message.bot.demo-response {
+            border-left: 4px solid #d97706;
+        }
+        
+        .quick-questions {
+            list-style: none;
+            padding: 0;
+            margin-top: 10px;
+        }
+        
+        .quick-questions li {
+            margin-bottom: 8px;
+        }
+        
+        .quick-question {
+            color: #1e40af;
+            text-decoration: none;
+            font-size: 14px;
+            display: block;
+            padding: 5px 10px;
+            background-color: #e0e7ff;
+            border-radius: 15px;
+            transition: background-color 0.2s ease;
+        }
+        
+        .quick-question:hover {
+            background-color: #c7d2fe;
+            text-decoration: none;
+        }
+        
+        .action-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+            align-self: flex-start;
+        }
+        
+        .action-btn {
+            background-color: #1e40af;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 6px 12px;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: background-color 0.2s ease;
+        }
+        
+        .action-btn:hover {
+            background-color: #1e3a8a;
+        }
+        
+        .chat-chart-container {
+            width: 100%;
+            height: 200px;
+            margin-top: 10px;
+            background-color: white;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        
+        @media (max-width: 768px) {
+            .chatbot-window {
+                width: 90%;
+                height: 70vh;
+                bottom: 80px;
+                right: 5%;
+            }
+        }
+    `;
+    document.head.appendChild(style);
+    
+    const chatbotUI = document.createElement('div');
+    chatbotUI.innerHTML = `
+        <div id="chatbot-btn" class="ai-chatbot-btn" onclick="ChatBot.toggleChatbot()">
+            <i class="fas fa-robot"></i>
+            <span class="notification-badge">1</span>
+        </div>
+        <div id="chatbot-window" class="chatbot-window" style="display: none;">
+            <div class="chatbot-header">
+                <div class="chatbot-title">Mehmet Endüstriyel Takip AI Asistanı</div>
+                <div class="chatbot-controls">
+                    <button class="chatbot-btn minimize" onclick="ChatBot.toggleChatbot()">
+                        <i class="fas fa-minus"></i>
+                    </button>
+                </div>
+            </div>
+            <div id="chatbot-body" class="chatbot-body"></div>
+            <div class="chatbot-footer">
+                <input type="text" id="chatbot-input" class="chatbot-input" placeholder="Bir soru sorun..." />
+                <button class="chatbot-btn send" onclick="ChatBot.sendChatMessage()">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(chatbotUI);
+    
+    // Enter tuşuna basıldığında mesaj gönderme
+    document.getElementById('chatbot-input').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            window.ChatBot.sendChatMessage();
+        }
+    });
+    
+    // Bildirim etkisini 3 saniye sonra kaldır
+    setTimeout(() => {
+        const badge = document.querySelector('.notification-badge');
+        if (badge) {
+            badge.style.display = 'none';
+        }
+    }, 3000);
+    
+    Logger.info("Chatbot UI başarıyla oluşturuldu");
+}
+
+// Sayfa yüklendiğinde Chatbot UI'yi oluştur
+document.addEventListener('DOMContentLoaded', function() {
+    createChatbotUIIfNeeded();
+});
