@@ -854,6 +854,172 @@ async function analyzeEfficiencyImprovements() {
     }
 }
 
+// AI Analitiği sınıfı
+class AIAnalytics {
+    constructor() {
+        this.config = window.deepseekModel || {
+            apiKey: window.DEEPSEEK_API_KEY || 'sk-3a17ae40b3e445528bc988f04805e54b',
+            modelName: 'deepseek-chat',
+            temperature: 0.5, // Daha düşük sıcaklık değeri daha tutarlı cevaplar için
+            maxTokens: 1000
+        };
+        
+        this.systemPrompt = `
+            Sen bir Orta Gerilim Hücre üretim uzmanısın.
+            Teknik sorulara net, doğru ve teknik detaylarla dolu yanıtlar vereceksin.
+            Elektrik mühendisliği, orta gerilim ekipmanları ve üretim süreçleri konusunda uzman bilgin var.
+            Tüm yanıtlar teknik şartnamelere ve doğru mühendislik bilgilerine dayanmalıdır.
+            Bilmediğin bir konu olduğunda tahmin etmek yerine bilginin sınırlı olduğunu belirt.
+            Cevaplarının sonuna ilgili olabilecek teknik şartnameler ve referans dokümanları da ekle.
+        `;
+        
+        this.initialized = false;
+        this.init();
+    }
+    
+    init() {
+        console.log('AI Analitik modülü başlatılıyor...');
+        
+        // API key kontrolü
+        if (!this.config.apiKey) {
+            console.warn('API anahtarı bulunamadı, demo modda çalışılacak');
+        }
+        
+        // Teknik sorgulama butonu için event listener
+        const queryBtn = document.querySelector('#technical .card-body .btn-primary');
+        if (queryBtn) {
+            queryBtn.addEventListener('click', () => this.handleTechnicalQuery());
+        }
+        
+        this.initialized = true;
+        console.log('AI Analitik modülü başarıyla başlatıldı');
+    }
+    
+    async handleTechnicalQuery() {
+        const questionInput = document.getElementById('technicalQuestion');
+        if (!questionInput || !questionInput.value.trim()) return;
+        
+        const question = questionInput.value.trim();
+        
+        // Yükleniyor göster
+        const responseArea = document.querySelector('#technical .alert-info');
+        if (responseArea) {
+            responseArea.innerHTML = '<p class="text-center"><i class="bi bi-gear-fill"></i> Cevabınız hazırlanıyor...</p>';
+        }
+        
+        try {
+            // AI sorgulama
+            const answer = await this.queryTechnicalAI(question);
+            
+            // Cevabı göster
+            if (responseArea) {
+                responseArea.innerHTML = `
+                    <h6><i class="bi bi-lightbulb"></i> Yapay Zeka Cevabı:</h6>
+                    <p>${answer.text || answer.content}</p>
+                    <p class="mb-0">Referans doküman: <a href="#">${answer.reference || 'RM 36 Teknik Şartnamesi'}</a></p>
+                `;
+            }
+            
+            // İlgili dokümanları güncelle
+            this.updateRelatedDocuments(question);
+            
+        } catch (error) {
+            console.error('Teknik sorgulama hatası:', error);
+            
+            if (responseArea) {
+                responseArea.innerHTML = `
+                    <h6 class="text-danger"><i class="bi bi-exclamation-triangle"></i> Hata</h6>
+                    <p>Sorgulama sırasında bir hata oluştu. Lütfen tekrar deneyin.</p>
+                `;
+            }
+        }
+    }
+    
+    async queryTechnicalAI(question) {
+        console.log('Teknik sorgulama yapılıyor:', question);
+        
+        // Demo mod - Gerçek API yerine önceden hazırlanmış yanıtlar kullan
+        if (window.generateTechnicalAnswer) {
+            return window.generateTechnicalAnswer(question);
+        }
+        
+        // DeepSeek demo yanıt üret
+        return this.generateTechnicalDemoResponse(question);
+    }
+    
+    generateTechnicalDemoResponse(question) {
+        const lowerQuestion = question.toLowerCase();
+        
+        if (lowerQuestion.includes('akım trafosu')) {
+            return {
+                text: 'RM 36 CB hücresinde genellikle 200-400/5-5A 5P20 7,5/15VA veya 300-600/5-5A 5P20 7,5/15VA özelliklerinde toroidal tip akım trafoları kullanılmaktadır. Canias kodları: 144866% (KAP-80/190-95) veya 142227% (KAT-85/190-95). Akım trafoları birincil koruma için kullanılır ve orta gerilim ekipmanının korunmasında kritik rol oynar.',
+                reference: 'RM 36 CB Teknik Şartnamesi Rev.2.1'
+            };
+        } else if (lowerQuestion.includes('bara')) {
+            return {
+                text: 'OG Hücrelerde kullanılan baralar genellikle elektrolitik bakırdır. RM 36 serisi için 582mm ve 432mm uzunluklarında 40x10mm kesitinde düz bakır baralar kullanılır. Akım taşıma kapasitesi 1250A-2000A arasındadır. İzin verilen maksimum sıcaklık artışı 65K\'dir.',
+                reference: 'RM 36 Serisi Bara Montaj Kılavuzu Rev.1.8'
+            };
+        } else if (lowerQuestion.includes('motor') || lowerQuestion.includes('ayırıcı')) {
+            return {
+                text: 'RM 36 serisi hücrelerde kesici ve ayırıcılarda 24VDC motorlar standart olarak kullanılmaktadır. Motor gücü ayırıcılar için 60W, kesiciler için 85W değerindedir. Çalışma süresi 3-5 saniye arasındadır ve her motorun mekanik ömrü en az 10.000 operasyondur.',
+                reference: 'RM 36 Motor Teknik Özellikleri Rev.1.2'
+            };
+        } else {
+            return {
+                text: 'RM 36 serisi hücreler, 36kV orta gerilim için tasarlanmıştır. Nominal gerilimi 36kV, darbe dayanım gerilimi 170kV, nominal akım 630A-1250A, kısa devre dayanımı 16kA-25kA arasında seçilebilmektedir. Metal muhafazalı, hava izoleli ve modüler yapıdadır. IEC 62271-200 standardına göre üretilmektedir.',
+                reference: 'RM 36 Serisi Genel Teknik Şartname Rev.3.0'
+            };
+        }
+    }
+    
+    updateRelatedDocuments(question) {
+        const lowerQuestion = question.toLowerCase();
+        const relatedDocsArea = document.querySelector('#technical .mt-3 ul');
+        
+        if (!relatedDocsArea) return;
+        
+        let documentsList = '';
+        
+        if (lowerQuestion.includes('akım trafosu')) {
+            documentsList = `
+                <li><a href="#">RM 36 CB Teknik Çizim</a> - Rev.2.1</li>
+                <li><a href="#">Akım Trafosu Seçim Kılavuzu</a> - Rev.1.3</li>
+                <li><a href="#">TEDAS-MLZ-2020-069 Teknik Şartname</a></li>
+                <li><a href="#">IEC 60044-1 Standart Referansı</a></li>
+            `;
+        } else if (lowerQuestion.includes('bara')) {
+            documentsList = `
+                <li><a href="#">RM 36 Serisi Bara Montaj Kılavuzu</a> - Rev.1.8</li>
+                <li><a href="#">Bara Kesit Hesaplama Çizelgesi</a> - Rev.2.0</li>
+                <li><a href="#">Bakır Bara Teknik Özellikleri</a></li>
+                <li><a href="#">IEC 60865-1 Kısa Devre Hesaplamaları</a></li>
+            `;
+        } else if (lowerQuestion.includes('motor') || lowerQuestion.includes('ayırıcı')) {
+            documentsList = `
+                <li><a href="#">RM 36 Motor Teknik Özellikleri</a> - Rev.1.2</li>
+                <li><a href="#">Motorlu Mekanizma Kurulum Kılavuzu</a> - Rev.1.4</li>
+                <li><a href="#">Kesici/Ayırıcı Bakım Talimatı</a></li>
+                <li><a href="#">Motor Kontrol Ünitesi Şeması</a> - Rev.1.1</li>
+            `;
+        } else {
+            documentsList = `
+                <li><a href="#">RM 36 Serisi Genel Teknik Şartname</a> - Rev.3.0</li>
+                <li><a href="#">RM 36 CB Teknik Çizim</a> - Rev.2.1</li>
+                <li><a href="#">IEC 62271-200 Orta Gerilim Şalt Cihazları</a></li>
+                <li><a href="#">Ürün Kataloğu</a> - 2023/2</li>
+            `;
+        }
+        
+        relatedDocsArea.innerHTML = documentsList;
+    }
+}
+
+// Global olarak AI Analitiği oluştur
+window.aiAnalytics = new AIAnalytics();
+
+console.log('AI Analytics modülü başarıyla yüklendi');
+
 // Dışa aktarılacak fonksiyonlar
 export default {
     analyzeSupplyChainRisks,
