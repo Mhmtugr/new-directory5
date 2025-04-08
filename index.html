@@ -1923,85 +1923,279 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.9/index.global.min.js" crossorigin="anonymous"></script>
     
-    <!-- Core Utilities -->
-    <script src="core/compat-check.js"></script>
-    <script src="utils/event-bus.js"></script>
-    
     <!-- Config -->
     <script src="config/app-config.js"></script>
+    
+    <!-- Core Utilities -->
     <script src="core/logger.js"></script>
+    <script src="utils/event-bus.js"></script>
     
     <!-- Services -->
     <script src="services/api-service.js"></script>
     <script src="services/erp-service.js"></script>
     <script src="services/ai-service.js"></script>
     
-    <!-- Firebase -->
+    <!-- Core -->
+    <script src="core/compat-check.js"></script>
     <script src="core/firebase-config.js"></script>
     <script src="core/mock-firebase.js"></script>
     
-    <!-- Core App -->
-    <script src="core/app.js"></script>
-    
-    <!-- Modules -->
+    <!-- AI Modules -->
     <script src="modules/ai/advanced-ai.js"></script>
     <script src="modules/ai/chatbot.js"></script>
     <script src="modules/ai/ai-analytics.js"></script>
     <script src="modules/ai/ai-integration.js"></script>
+    
+    <!-- App Modules -->
     <script src="modules/dashboard/dashboard.js"></script>
     <script src="modules/orders/orders.js"></script>
     <script src="modules/production/production.js"></script>
     
-    <!-- Main Initialization -->
+    <!-- App Core -->
+    <script src="core/app.js"></script>
     <script src="core/main.js"></script>
     
     <!-- Initialization Scripts -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Geçici demoLogin çözümü
-            window.demoLogin = window.demoLogin || function() {
-                console.warn('demoLogin fonksiyonu tanımlı değil!');
+            // Geçici demoLogin çözümü - global olarak tanımla
+            window.demoLogin = function(email, password) {
+                console.log('Demo giriş yapılıyor...', email || 'demo@example.com');
+                return {
+                    success: true,
+                    user: {
+                        name: 'Demo Kullanıcı',
+                        email: email || 'demo@example.com',
+                        role: 'Yönetici'
+                    }
+                };
             };
 
             // initApp fonksiyonu kontrolü
-            if (typeof initApp === 'function') {
-                initApp();
+            if (typeof window.initApp === 'function') {
+                window.initApp();
             } else {
                 console.error('initApp fonksiyonu bulunamadı! Geçici bir çözüm uygulanıyor.');
                 window.initApp = function() {
                     console.log('initApp geçici olarak çalıştırıldı.');
+                    setupDashboardCharts();
                 };
-                initApp();
+                window.initApp();
             }
 
             // Dashboard grafiklerini kurma
-            if (typeof setupDashboardCharts === 'function') {
-                setupDashboardCharts();
+            if (typeof window.setupDashboardCharts === 'function') {
+                window.setupDashboardCharts();
             } else {
                 console.error('setupDashboardCharts fonksiyonu bulunamadı! Geçici bir çözüm uygulanıyor.');
                 window.setupDashboardCharts = function() {
                     console.log('setupDashboardCharts geçici olarak çalıştırıldı.');
+                    
+                    // Basit grafik oluşturma
+                    if (typeof Chart !== 'undefined') {
+                        try {
+                            // Üretim grafiği
+                            if (document.getElementById('productionChart')) {
+                                new Chart(document.getElementById('productionChart'), {
+                                    type: 'line',
+                                    data: {
+                                        labels: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran'],
+                                        datasets: [{
+                                            label: 'Tamamlanan',
+                                            data: [12, 19, 15, 20, 18, 15],
+                                            borderColor: '#27ae60',
+                                            backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                                            tension: 0.4
+                                        }, {
+                                            label: 'Planlanan',
+                                            data: [15, 22, 18, 24, 22, 20],
+                                            borderColor: '#3498db',
+                                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                                            tension: 0.4
+                                        }]
+                                    }
+                                });
+                            }
+                            
+                            // Hücre tipi grafiği
+                            if (document.getElementById('cellTypeChart')) {
+                                new Chart(document.getElementById('cellTypeChart'), {
+                                    type: 'doughnut',
+                                    data: {
+                                        labels: ['RM 36 CB', 'RM 36 LB', 'RM 36 FL', 'RMU'],
+                                        datasets: [{
+                                            label: 'Hücre Tipi',
+                                            data: [45, 25, 20, 10],
+                                            backgroundColor: [
+                                                'rgba(52, 152, 219, 0.7)',
+                                                'rgba(155, 89, 182, 0.7)',
+                                                'rgba(52, 73, 94, 0.7)',
+                                                'rgba(22, 160, 133, 0.7)'
+                                            ]
+                                        }]
+                                    }
+                                });
+                            }
+                            
+                            // Diğer grafikleri yükle
+                            if (document.getElementById('materialForecastChart')) {
+                                new Chart(document.getElementById('materialForecastChart'), {
+                                    type: 'bar',
+                                    data: {
+                                        labels: ['Siemens Röle', 'Akım Trafosu', 'Kablo Başlığı', 'Bara', 'Kesici'],
+                                        datasets: [{
+                                            label: 'Mevcut Stok',
+                                            data: [2, 3, 12, 25, 8],
+                                            backgroundColor: 'rgba(52, 152, 219, 0.5)'
+                                        }, {
+                                            label: 'İhtiyaç',
+                                            data: [8, 5, 15, 18, 12],
+                                            backgroundColor: 'rgba(231, 76, 60, 0.5)'
+                                        }]
+                                    }
+                                });
+                            }
+                            
+                            if (document.getElementById('efficiencyChart')) {
+                                new Chart(document.getElementById('efficiencyChart'), {
+                                    type: 'line',
+                                    data: {
+                                        labels: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran'],
+                                        datasets: [{
+                                            label: 'Verimlilik (%)',
+                                            data: [75, 78, 80, 79, 82, 85],
+                                            borderColor: '#27ae60',
+                                            backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                                            fill: true
+                                        }]
+                                    }
+                                });
+                            }
+                        } catch (error) {
+                            console.error('Grafik oluşturulurken hata:', error);
+                        }
+                    }
                 };
-                setupDashboardCharts();
+                window.setupDashboardCharts();
             }
 
             // Chatbot butonunu etkinleştir
             const chatbotBtn = document.getElementById('ai-chatbot-btn');
-            if (chatbotBtn && typeof toggleChatbot === 'function') {
-                chatbotBtn.addEventListener('click', toggleChatbot);
-            } else {
-                console.error('toggleChatbot fonksiyonu bulunamadı veya chatbot butonu eksik! Geçici bir çözüm uygulanıyor.');
-                window.toggleChatbot = function() {
-                    console.log('toggleChatbot geçici olarak çalıştırıldı.');
-                };
-                if (chatbotBtn) {
-                    chatbotBtn.addEventListener('click', toggleChatbot);
-                }
+            if (chatbotBtn) {
+                chatbotBtn.addEventListener('click', function() {
+                    // Chatbot modalını göster
+                    const chatModal = new bootstrap.Modal(document.getElementById('aiChatModal'));
+                    chatModal.show();
+                    
+                    // Başlangıç mesajını ekle
+                    const chatMessages = document.getElementById('chatMessages');
+                    if (chatMessages && chatMessages.children.length === 0) {
+                        const aiMessage = document.createElement('div');
+                        aiMessage.className = 'chat-message ai-message';
+                        aiMessage.textContent = 'Merhaba! Size nasıl yardımcı olabilirim?';
+                        chatMessages.appendChild(aiMessage);
+                    }
+                    
+                    // Bildirim işaretini gizle
+                    const badge = document.querySelector('.notification-badge');
+                    if (badge) badge.style.display = 'none';
+                });
             }
+
+            // Send Chat Button
+            const sendChatBtn = document.getElementById('sendChatBtn');
+            if (sendChatBtn) {
+                sendChatBtn.addEventListener('click', function() {
+                    const chatInput = document.getElementById('aiChatInput');
+                    const chatMessages = document.getElementById('chatMessages');
+                    
+                    if (chatInput && chatMessages && chatInput.value.trim() !== '') {
+                        // Kullanıcı mesajı ekle
+                        const userMessage = document.createElement('div');
+                        userMessage.className = 'chat-message user-message';
+                        userMessage.textContent = chatInput.value;
+                        chatMessages.appendChild(userMessage);
+                        
+                        // AI cevabı
+                        setTimeout(() => {
+                            const aiMessage = document.createElement('div');
+                            aiMessage.className = 'chat-message ai-message';
+                            aiMessage.textContent = 'Bu demo sürümünde chatbot yanıt verememektedir. Tam sürümde yapay zeka entegrasyonu aktif olacaktır.';
+                            chatMessages.appendChild(aiMessage);
+                            
+                            // Sohbeti kaydır
+                            chatMessages.scrollTop = chatMessages.scrollHeight;
+                        }, 1000);
+                        
+                        // Input temizle
+                        chatInput.value = '';
+                    }
+                });
+                
+                // Enter tuşu dinleme
+                document.getElementById('aiChatInput')?.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        sendChatBtn.click();
+                    }
+                });
+            }
+
+            // Tab değişikliğini yönet
+            document.querySelectorAll('.nav-link').forEach(tab => {
+                tab.addEventListener('click', function() {
+                    // Aktif sınıfı değiştir
+                    document.querySelectorAll('.nav-link').forEach(t => t.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Tab'ı göster
+                    const targetId = this.getAttribute('href').substring(1);
+                    document.querySelectorAll('.tab-pane').forEach(pane => {
+                        pane.classList.remove('show', 'active');
+                        if (pane.id === targetId) {
+                            pane.classList.add('show', 'active');
+                        }
+                    });
+                });
+            });
 
             // Tooltip'i etkinleştir
             const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
             tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el));
+            
+            // Takvimi başlat
+            if (typeof FullCalendar !== 'undefined' && document.getElementById('productionCalendar')) {
+                const calendar = new FullCalendar.Calendar(document.getElementById('productionCalendar'), {
+                    initialView: 'dayGridWeek',
+                    headerToolbar: {
+                        left: 'prev,next today',
+                        center: 'title',
+                        right: 'dayGridMonth,dayGridWeek'
+                    },
+                    events: [
+                        {
+                            title: '#0424-1251 Mekanik Üretim',
+                            start: '2023-11-06',
+                            end: '2023-11-10',
+                            color: '#e74c3c'
+                        },
+                        {
+                            title: '#0424-1245 Montaj',
+                            start: '2023-11-08',
+                            end: '2023-11-12',
+                            color: '#f39c12'
+                        },
+                        {
+                            title: '#0424-1239 Test',
+                            start: '2023-11-13',
+                            end: '2023-11-15',
+                            color: '#27ae60'
+                        }
+                    ]
+                });
+                calendar.render();
+            }
+            
+            console.log('Tüm başlatma adımları tamamlandı!');
         });
     </script>
 </body>

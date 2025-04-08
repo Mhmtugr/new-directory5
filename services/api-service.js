@@ -1,10 +1,6 @@
 /**
  * API Servisi
- * Tüm dış API isteklerini yöneten servis
  */
-
-// Logger oluştur
-const log = window.logger ? window.logger('APIService') : console;
 
 // API Servisi sınıfı
 class APIService {
@@ -13,7 +9,7 @@ class APIService {
         this.baseUrl = this.config.apiUrl || 'https://api.example.com';
         this.mockMode = this.config.useDemoMode || true;
         
-        log.info('API Servisi başlatılıyor', { baseUrl: this.baseUrl, mockMode: this.mockMode });
+        console.log('API Servisi başlatılıyor', { baseUrl: this.baseUrl, mockMode: this.mockMode });
     }
     
     async get(endpoint, params = {}) {
@@ -35,7 +31,7 @@ class APIService {
             
             return await response.json();
         } catch (error) {
-            log.error(`GET ${endpoint} başarısız:`, error);
+            console.error(`GET ${endpoint} başarısız:`, error);
             throw error;
         }
     }
@@ -57,7 +53,7 @@ class APIService {
             
             return await response.json();
         } catch (error) {
-            log.error(`POST ${endpoint} başarısız:`, error);
+            console.error(`POST ${endpoint} başarısız:`, error);
             throw error;
         }
     }
@@ -69,36 +65,68 @@ class APIService {
     
     // Mock veri metotları
     getMockData(endpoint, params) {
-        log.info(`Mock GET: ${endpoint}`, params);
+        console.log(`Mock GET: ${endpoint}`, params);
         
         // Endpoint'e göre demo veri döndür
         if (endpoint.includes('/orders')) {
-            return Promise.resolve(window.mockFirebase ? window.mockFirebase.orders : []);
+            return Promise.resolve({
+                orders: [
+                    { 
+                        id: '#0424-1251', 
+                        customer: 'AYEDAŞ', 
+                        cellType: 'RM 36 CB', 
+                        quantity: 1, 
+                        deliveryDate: '2024-11-15', 
+                        status: 'Gecikiyor'
+                    },
+                    { 
+                        id: '#0424-1245', 
+                        customer: 'TEİAŞ', 
+                        cellType: 'RM 36 CB', 
+                        quantity: 1, 
+                        deliveryDate: '2024-11-20', 
+                        status: 'Devam Ediyor'
+                    }
+                ]
+            });
         }
         
         if (endpoint.includes('/materials')) {
-            return Promise.resolve(window.mockFirebase ? window.mockFirebase.materials : []);
+            return Promise.resolve({
+                materials: [
+                    {
+                        code: '137998%',
+                        name: 'Siemens 7SR1003-1JA20-2DA0+ZY20 24VDC',
+                        stock: 2,
+                        minStock: 5,
+                        status: 'Kritik'
+                    },
+                    {
+                        code: '144866%',
+                        name: 'KAP-80/190-95 Akım Trafosu',
+                        stock: 3,
+                        minStock: 5,
+                        status: 'Düşük'
+                    }
+                ]
+            });
         }
         
         return Promise.resolve({ message: 'Mock veri bulunamadı' });
     }
     
     postMockData(endpoint, data) {
-        log.info(`Mock POST: ${endpoint}`, data);
+        console.log(`Mock POST: ${endpoint}`, data);
         
-        // Sipariş ekleme
-        if (endpoint.includes('/orders')) {
-            if (window.mockFirebase) {
-                window.mockFirebase.addOrder(data);
-                return Promise.resolve({ success: true, id: `ORDER-${Date.now()}` });
-            }
-        }
-        
-        return Promise.resolve({ success: true, message: 'İşlem başarılı (mock)' });
+        return Promise.resolve({ 
+            success: true, 
+            message: 'İşlem başarılı (mock)',
+            id: `ORD-${Date.now()}` 
+        });
     }
 }
 
 // Global olarak api-service'i ata
 window.apiService = new APIService();
 
-log.info('API Servisi başarıyla yüklendi');
+console.log('API Servisi başarıyla yüklendi');

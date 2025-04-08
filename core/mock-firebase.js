@@ -3,9 +3,6 @@
  * Gerçek Firebase olmadığında demo verileri sağlar
  */
 
-// Logger oluştur
-const log = window.logger ? window.logger('MockFirebase') : console;
-
 // Mock Firebase sınıfı
 class MockFirebase {
     constructor() {
@@ -69,12 +66,12 @@ class MockFirebase {
             }
         ];
         
-        log.info('Mock Firebase nesnesi oluşturuldu');
+        console.log('Mock Firebase nesnesi oluşturuldu');
     }
     
     // Auth metotları
     signIn(email, password) {
-        log.info('Mock giriş yapılıyor', email);
+        console.log('Mock giriş yapılıyor', email);
         
         const user = this.users.find(u => u.email === email);
         if (user) {
@@ -85,30 +82,30 @@ class MockFirebase {
     }
     
     signOut() {
-        log.info('Mock çıkış yapılıyor');
+        console.log('Mock çıkış yapılıyor');
         return { success: true };
     }
     
     // Firestore metotları
     getOrders() {
-        log.info('Mock siparişler getiriliyor');
+        console.log('Mock siparişler getiriliyor');
         return Promise.resolve(this.orders);
     }
     
     getOrderById(id) {
-        log.info('Mock sipariş getiriliyor', id);
+        console.log('Mock sipariş getiriliyor', id);
         const order = this.orders.find(o => o.id === id);
         return Promise.resolve(order || null);
     }
     
     addOrder(order) {
-        log.info('Mock sipariş ekleniyor', order);
+        console.log('Mock sipariş ekleniyor', order);
         this.orders.push(order);
         return Promise.resolve({ success: true, id: order.id });
     }
     
     getMaterials() {
-        log.info('Mock malzemeler getiriliyor');
+        console.log('Mock malzemeler getiriliyor');
         return Promise.resolve(this.materials);
     }
 }
@@ -116,4 +113,4 @@ class MockFirebase {
 // Global nesne olarak ekle
 window.mockFirebase = new MockFirebase();
 
-log.info('Mock Firebase modülü başarıyla yüklendi');
+console.log('Mock Firebase modülü başarıyla yüklendi');

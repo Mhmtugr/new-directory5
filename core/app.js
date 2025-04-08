@@ -703,296 +703,30 @@ function showLogin() {
 
 // Uygulama önyükleme ve başlatma kodu
 function initApp() {
-    console.log('Application initialized.');
-    // Uygulama başlatma kodları
-}
-
-// Bağımlılıkları yükle
-async function loadDependencies() {
-    try {
-        console.log("Temel bağımlılıklar yükleniyor...");
-        
-        // Mock veritabanı hizmetlerini yükle (gerçek uygulamada gerek olmayabilir)
-        if (!window.firebase) {
-            await loadScript('core/mock-firebase.js');
-        }
-        
-        // Uyumluluk kontrolü
-        if (!await checkCompatibility()) {
-            throw new Error("Tarayıcı uyumsuzluğu: Tarayıcınız uygulamanın gerektirdiği özellikleri desteklemiyor.");
-        }
-        
-        // Temel hizmetleri yükle
-        return true;
-    } catch (error) {
-        console.error("Bağımlılıklar yüklenirken hata:", error);
-        throw error;
-    }
-}
-
-// UI modüllerini yükle
-async function loadModules() {
-    try {
-        console.log("Modüller yükleniyor...");
-        
-        // Herhangi bir eksik modülü yükle
-        const missingModules = [];
-        
-        // Dashboard modülü kontrolü
-        if (typeof window.loadDashboardData !== 'function') {
-            if (document.querySelector('script[src*="dashboard.js"]')) {
-                console.log("Dashboard modülü script etiketi var ancak yüklenemedi");
-            } else {
-                console.log("Dashboard modülü script etiketi bulunamadı, ekleniyor");
-                missingModules.push(loadScript('modules/dashboard/dashboard.js'));
-            }
-        }
-        
-        // Orders modülü kontrolü
-        if (typeof window.loadOrdersData !== 'function') {
-            if (document.querySelector('script[src*="orders.js"]')) {
-                console.log("Orders modülü script etiketi var ancak yüklenemedi");
-            } else {
-                console.log("Orders modülü script etiketi bulunamadı, ekleniyor");
-                missingModules.push(loadScript('modules/orders/orders.js'));
-            }
-        }
-        
-        // Tüm eksik modüllerin yüklenmesini bekle
-        if (missingModules.length > 0) {
-            await Promise.all(missingModules);
-        }
-        
-        return true;
-    } catch (error) {
-        console.error("Modüller yüklenirken hata:", error);
-        console.log("Hata oluştu ancak demo mod ile devam edilecek");
-        return true; // Hata olsa bile devam et
-    }
-}
-
-// Uyumluluk kontrolü
-async function checkCompatibility() {
-    // Temel uyumluluk kontrolü
-    if (!window.localStorage || !window.indexedDB || !window.fetch) {
-        return false;
-    }
-    
-    // PWA desteği kontrolü
-    if ('serviceWorker' in navigator) {
-        try {
-            await navigator.serviceWorker.register('/service-worker.js');
-            console.log('Service Worker başarıyla kaydedildi');
-        } catch (error) {
-            console.warn('Service Worker kaydı başarısız:', error);
-            // Service worker hatası uygulamayı engellemez
-        }
-    }
-    
-    return true;
-}
-
-// Hata sayfası göster
-function showErrorPage(error) {
-    const mainContent = document.querySelector('.main-content');
-    if (!mainContent) return;
-    
-    mainContent.innerHTML = `
-        <div class="error-container">
-            <div class="error-icon">
-                <i class="bi bi-exclamation-triangle"></i>
-            </div>
-            <h2>Uygulama Başlatılamadı</h2>
-            <p>${error.message || 'Bilinmeyen bir hata oluştu.'}</p>
-            <button class="btn btn-primary" onclick="window.location.reload()">Yeniden Dene</button>
-        </div>
-    `;
-}
-
-// UI kurulumu 
-function setupUI() {
-    // Sidebar menü işlevselliği
-    const sidebarLinks = document.querySelectorAll('.sidebar .nav-link');
-    sidebarLinks.forEach(link => {
-        link.addEventListener('click', function(e) {
-            // Aktif link sınıfını güncelle
-            sidebarLinks.forEach(l => l.classList.remove('active'));
-            this.classList.add('active');
-            
-            // İlgili içeriği göster (basit bir router)
-            const targetId = this.getAttribute('data-target');
-            if (targetId) {
-                document.querySelectorAll('.page-content').forEach(page => {
-                    page.style.display = 'none';
-                });
-                
-                const targetPage = document.getElementById(targetId);
-                if (targetPage) {
-                    targetPage.style.display = 'block';
-                }
-            }
-        });
-    });
-    
-    // İlk sayfa olarak gösterge panelini göster
-    const dashboardLink = document.querySelector('.sidebar .nav-link[data-target="dashboard-page"]');
-    if (dashboardLink) {
-        dashboardLink.click();
-    }
-}
-
-// Uygulamayı başlat
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initApp);
-} else {
-    initApp();
-}
-
-export { loadScript };
-
-// Verileri yükle
-async function loadInitialData() {
-    try {
-        console.log("Başlangıç verileri yükleniyor...");
-        
-        // Dashboard için verileri yükle
-        if (typeof window.loadDashboardData === 'function') {
-            await window.loadDashboardData();
-        }
-        
-        // Sipariş verilerini yükle
-        if (typeof window.loadOrdersData === 'function') {
-            await window.loadOrdersData();
-        }
-        
-        // Üretim verilerini yükle
-        if (typeof window.loadProductionData === 'function') {
-            await window.loadProductionData();
-        }
-        
-        return true;
-    } catch (error) {
-        console.error("Veriler yüklenirken hata:", error);
-        // Kritik bir hata değilse devam et
-        return true;
-    }
-}
-
-/**
- * JavaScript dosyası yükleme fonksiyonu (lokal)
- */
-function loadScript(url) {
-    return new Promise((resolve, reject) => {
-        console.log(`Script yükleniyor: ${url}`);
-        
-        try {
-            const script = document.createElement('script');
-            script.src = url;
-            script.async = true;
-            
-            // Yükleme zaman aşımı kontrolü
-            const timeoutId = setTimeout(() => {
-                console.warn(`Script yükleme zaman aşımı: ${url}`);
-                reject(new Error(`Script yükleme zaman aşımı: ${url}`));
-            }, 10000); // 10 saniye
-            
-            script.onload = () => {
-                clearTimeout(timeoutId);
-                console.log(`Script başarıyla yüklendi: ${url}`);
-                resolve();
-            };
-            
-            script.onerror = (error) => {
-                clearTimeout(timeoutId);
-                console.error(`Script yüklenirken hata: ${url}`, error);
-                
-                // Hata durumunda alternatif URL dene
-                const alternativeUrl = url.startsWith('/') ? url.substring(1) : '/' + url;
-                console.log(`Alternatif URL deneniyor: ${alternativeUrl}`);
-                
-                const alternativeScript = document.createElement('script');
-                alternativeScript.src = alternativeUrl;
-                alternativeScript.async = true;
-                
-                alternativeScript.onload = () => {
-                    console.log(`Alternatif script başarıyla yüklendi: ${alternativeUrl}`);
-                    resolve();
-                };
-                
-                alternativeScript.onerror = () => {
-                    console.error(`Alternatif script de yüklenemedi: ${alternativeUrl}`);
-                    reject(new Error(`Script yüklenemedi: ${url} ve ${alternativeUrl}`));
-                };
-                
-                document.head.appendChild(alternativeScript);
-            };
-            
-            document.head.appendChild(script);
-        } catch (error) {
-            console.error(`Script yükleme isteği oluşturulurken hata: ${url}`, error);
-            reject(error);
-        }
-    });
-}
-
-/**
- * Ana Uygulama Modülü
- * Uygulamanın temel fonksiyonlarını ve başlatma rutinlerini içerir
- */
-
-// Logger oluştur
-const log = window.logger ? window.logger('App') : console;
-
-// Uygulama durumu
-const appState = {
-    initialized: false,
-    user: null,
-    authenticated: false,
-    demoMode: false,
-    currentModule: 'dashboard'
-};
-
-// Ana uygulama başlatma fonksiyonu
-function initApp() {
-    log.info('Uygulama başlatılıyor...');
+    console.log('Uygulama başlatılıyor...');
     
     try {
         // Demo modu kontrolü
         if (window.appConfig && window.appConfig.useDemoMode) {
             appState.demoMode = true;
-            log.info('Demo modu etkin');
+            console.log('Demo modu etkin');
         }
-        
-        // Temaları başlat
-        setupTheme();
         
         // Event Listeners
         setupEventListeners();
         
-        // Dashboard grafiklerini yükle
-        if (typeof setupDashboardCharts === 'function') {
-            setupDashboardCharts();
-        }
-        
         // Uygulama durumunu güncelle
         appState.initialized = true;
         
-        log.info('Uygulama başarıyla başlatıldı!');
+        console.log('Uygulama başarıyla başlatıldı!');
         
         // Global event
         if (window.eventBus) {
             window.eventBus.emit('app:initialized', appState);
         }
     } catch (error) {
-        log.error('Uygulama başlatılırken hata oluştu', error);
+        console.error('Uygulama başlatılırken hata oluştu', error);
     }
-}
-
-// Tema ayarları
-function setupTheme() {
-    // Varsayılan tema ayarları
-    const defaultTheme = localStorage.getItem('app_theme') || 'light';
-    document.body.setAttribute('data-theme', defaultTheme);
 }
 
 // Event listener'ları ayarla
@@ -1008,198 +742,108 @@ function setupEventListeners() {
             }
         });
     });
-    
-    // Chatbot butonunu etkinleştir
-    const chatbotBtn = document.getElementById('ai-chatbot-btn');
-    if (chatbotBtn) {
-        chatbotBtn.addEventListener('click', toggleChatbot);
-    }
 }
 
 // Dashboard grafiklerini ayarla
 function setupDashboardCharts() {
     try {
-        // Üretim durumu grafiği
-        const productionChart = new Chart(
-            document.getElementById('productionChart'),
-            {
-                type: 'line',
-                data: {
-                    labels: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran'],
-                    datasets: [{
-                        label: 'Tamamlanan',
-                        data: [12, 19, 15, 20, 18, 15],
-                        borderColor: '#27ae60',
-                        backgroundColor: 'rgba(39, 174, 96, 0.1)',
-                        tension: 0.4
-                    }, {
-                        label: 'Planlandı',
-                        data: [15, 22, 18, 24, 22, 20],
-                        borderColor: '#3498db',
-                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                        },
-                        title: {
-                            display: false
-                        }
-                    }
-                }
-            }
-        );
-        
-        // Hücre tipi dağılımı grafiği
-        const cellTypeChart = new Chart(
-            document.getElementById('cellTypeChart'),
-            {
-                type: 'doughnut',
-                data: {
-                    labels: ['RM 36 CB', 'RM 36 LB', 'RM 36 FL', 'RMU'],
-                    datasets: [{
-                        label: 'Hücre Tipi',
-                        data: [45, 25, 20, 10],
-                        backgroundColor: [
-                            'rgba(52, 152, 219, 0.7)',
-                            'rgba(155, 89, 182, 0.7)',
-                            'rgba(52, 73, 94, 0.7)',
-                            'rgba(22, 160, 133, 0.7)'
-                        ]
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                        }
-                    }
-                }
-            }
-        );
-        
-        // Diğer tüm grafikleri başlat
-        setupOtherCharts();
-        
-        log.info('Dashboard grafikleri başarıyla oluşturuldu');
-    } catch (error) {
-        log.error('Grafikler oluşturulurken hata oluştu', error);
-    }
-}
-
-// Diğer grafikleri ayarla
-function setupOtherCharts() {
-    try {
-        // Malzeme tahmin grafiği
-        if (document.getElementById('materialForecastChart')) {
-            new Chart(
-                document.getElementById('materialForecastChart'),
-                {
-                    type: 'bar',
-                    data: {
-                        labels: ['Siemens Röle', 'Akım Trafosu', 'Kablo Başlığı', 'Bara', 'Kesici', 'Ayırıcı'],
-                        datasets: [{
-                            label: 'Mevcut Stok',
-                            data: [2, 3, 12, 25, 8, 10],
-                            backgroundColor: 'rgba(52, 152, 219, 0.5)'
-                        }, {
-                            label: 'Tahmini İhtiyaç',
-                            data: [8, 5, 15, 18, 12, 14],
-                            backgroundColor: 'rgba(231, 76, 60, 0.5)'
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        scales: {
-                            y: {
-                                beginAtZero: true
-                            }
-                        }
-                    }
-                }
-            );
-        }
-        
-        // Kapasite planı grafiği
-        if (document.getElementById('capacityChart')) {
-            new Chart(
-                document.getElementById('capacityChart'),
-                {
-                    type: 'line',
-                    data: {
-                        labels: ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma'],
-                        datasets: [{
-                            label: 'Kapasite',
-                            data: [85, 90, 95, 80, 70],
-                            borderColor: '#3498db',
-                            fill: false,
-                            tension: 0.1
-                        }, {
-                            label: 'Kullanım',
-                            data: [65, 75, 90, 60, 50],
-                            borderColor: '#e74c3c',
-                            fill: false,
-                            tension: 0.1
-                        }]
-                    }
-                }
-            );
-        }
-        
-        // Teslimat tahmini grafiği
-        if (document.getElementById('deliveryChart')) {
-            new Chart(
-                document.getElementById('deliveryChart'),
-                {
-                    type: 'bar',
-                    data: {
-                        labels: ['Bu Hafta', 'Gelecek Hafta', '3. Hafta', '4. Hafta'],
-                        datasets: [{
-                            label: 'Planlanan Teslimatlar',
-                            data: [2, 4, 5, 3],
-                            backgroundColor: 'rgba(52, 152, 219, 0.7)'
-                        }]
-                    }
-                }
-            );
-        }
-        
-        // Verimlilik grafiği
-        if (document.getElementById('efficiencyChart')) {
-            new Chart(
-                document.getElementById('efficiencyChart'),
-                {
+        // Chart.js ile grafikleri oluştur
+        if (typeof Chart !== 'undefined') {
+            // Üretim durumu grafiği
+            if (document.getElementById('productionChart')) {
+                new Chart(document.getElementById('productionChart'), {
                     type: 'line',
                     data: {
                         labels: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran'],
                         datasets: [{
-                            label: 'Verimlilik (%)',
-                            data: [75, 78, 80, 79, 82, 85],
+                            label: 'Tamamlanan',
+                            data: [12, 19, 15, 20, 18, 15],
                             borderColor: '#27ae60',
                             backgroundColor: 'rgba(39, 174, 96, 0.1)',
-                            fill: true
+                            tension: 0.4
+                        }, {
+                            label: 'Planlandı',
+                            data: [15, 22, 18, 24, 22, 20],
+                            borderColor: '#3498db',
+                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                            tension: 0.4
                         }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                            },
+                            title: {
+                                display: false
+                            }
+                        }
                     }
-                }
-            );
+                });
+            }
+            
+            // Hücre tipi dağılımı grafiği
+            if (document.getElementById('cellTypeChart')) {
+                new Chart(document.getElementById('cellTypeChart'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['RM 36 CB', 'RM 36 LB', 'RM 36 FL', 'RMU'],
+                        datasets: [{
+                            label: 'Hücre Tipi',
+                            data: [45, 25, 20, 10],
+                            backgroundColor: [
+                                'rgba(52, 152, 219, 0.7)',
+                                'rgba(155, 89, 182, 0.7)',
+                                'rgba(52, 73, 94, 0.7)',
+                                'rgba(22, 160, 133, 0.7)'
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                            }
+                        }
+                    }
+                });
+            }
+            
+            console.log('Dashboard grafikleri başarıyla oluşturuldu');
+        } else {
+            console.error('Chart.js kütüphanesi yüklenemedi!');
         }
     } catch (error) {
-        log.error('Diğer grafikler oluşturulurken hata oluştu', error);
+        console.error('Grafikler oluşturulurken hata oluştu', error);
+    }
+}
+
+// Chatbot toggle
+function toggleChatbot() {
+    console.log('Chatbot açılıyor');
+    try {
+        const chatModal = new bootstrap.Modal(document.getElementById('aiChatModal'));
+        chatModal.show();
+        
+        // Bildirim işaretini temizle
+        const notificationBadge = document.querySelector('.ai-chatbot-btn .notification-badge');
+        if (notificationBadge) {
+            notificationBadge.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Chatbot açılırken hata oluştu:', error);
     }
 }
 
 // Demo login
-function demoLogin() {
-    log.info('Demo hesabı ile giriş yapılıyor...');
+function demoLogin(email, password) {
+    console.log('Demo hesabı ile giriş yapılıyor...', email || 'demo@example.com');
     appState.user = {
         id: 'demo-user-001',
         name: 'Demo Kullanıcı',
-        email: 'demo@example.com',
+        email: email || 'demo@example.com',
         role: 'Yönetici',
         department: 'Yönetim'
     };
@@ -1209,17 +853,16 @@ function demoLogin() {
         window.eventBus.emit('auth:login', appState.user);
     }
     
-    return { success: true, user: appState.user };
+    return {
+        success: true,
+        user: appState.user
+    };
 }
 
 // Fonksiyonları global scope'a ekle
 window.initApp = initApp;
 window.setupDashboardCharts = setupDashboardCharts;
-window.toggleChatbot = toggleChatbot || function() {};
+window.toggleChatbot = toggleChatbot;
 window.demoLogin = demoLogin;
 
-// İnit fonksiyonunu document yüklendiğinde çağır
-document.addEventListener('DOMContentLoaded', function() {
-    // Burada initApp çağrılmıyor, DOMContentLoaded event handler'ında çağrılacak
-    log.info('App.js yüklendi. initApp document ready event\'inde çağrılacak');
-});
+console.log('App core modülü başarıyla yüklendi');

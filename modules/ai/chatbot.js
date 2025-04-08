@@ -3,51 +3,55 @@
  * Yapay zeka asistanı ile iletişim arayüzü sağlar
  */
 
-// Logger oluştur
-const log = window.logger ? window.logger('Chatbot') : console;
-
 // Chatbot sınıfı
 class Chatbot {
     constructor() {
         this.messages = [];
         this.initialized = false;
-        this.aiService = window.aiService;
         
         this.init();
     }
     
     init() {
-        log.info('Chatbot başlatılıyor...');
+        console.log('Chatbot başlatılıyor...');
         
-        // DOM elementleri
-        this.chatModal = document.getElementById('aiChatModal');
-        this.chatMessages = document.getElementById('chatMessages');
-        this.chatInput = document.getElementById('aiChatInput');
-        this.sendButton = document.getElementById('sendChatBtn');
-        
-        // Event listeners
-        if (this.sendButton) {
-            this.sendButton.addEventListener('click', () => this.sendMessage());
+        try {
+            // DOM elementleri
+            this.chatModal = document.getElementById('aiChatModal');
+            this.chatMessages = document.getElementById('chatMessages');
+            this.chatInput = document.getElementById('aiChatInput');
+            this.sendButton = document.getElementById('sendChatBtn');
+            
+            // Event listeners
+            if (this.sendButton) {
+                this.sendButton.addEventListener('click', () => this.sendMessage());
+            }
+            
+            if (this.chatInput) {
+                this.chatInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.sendMessage();
+                    }
+                });
+            }
+            
+            // AI servis kontrolü
+            this.aiService = window.aiService;
+            
+            if (!this.aiService) {
+                console.warn('AI servisi bulunamadı, demo yanıtlar kullanılacak');
+            }
+            
+            this.initialized = true;
+            console.log('Chatbot başarıyla başlatıldı');
+        } catch (error) {
+            console.error('Chatbot başlatılamadı:', error);
         }
-        
-        if (this.chatInput) {
-            this.chatInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    this.sendMessage();
-                }
-            });
-        }
-        
-        // Hoşgeldin mesajı ekle
-        this.addMessage('ai', 'Merhaba! Ben MehmetEndüstriyelTakip yapay zeka asistanı. Size nasıl yardımcı olabilirim?');
-        
-        this.initialized = true;
-        log.info('Chatbot başarıyla başlatıldı');
     }
     
     async sendMessage() {
-        if (!this.initialized || !this.chatInput || !this.aiService) {
-            log.error('Chatbot henüz hazır değil');
+        if (!this.initialized || !this.chatInput) {
+            console.error('Chatbot henüz hazır değil');
             return;
         }
         
@@ -59,41 +63,29 @@ class Chatbot {
         this.chatInput.value = '';
         
         try {
-            // Yapay zeka yanıtını al
-            const response = await this.aiService.query(message);
+            let response;
+            
+            if (this.aiService) {
+                // Yapay zeka yanıtını al
+                response = await this.aiService.query(message);
+            } else {
+                // AI servis yoksa demo yanıt kullan
+                response = {
+                    type: 'text',
+                    content: 'Bu bir demo yanıttır. AI servisi aktif değil.'
+                };
+            }
             
             if (response.error) {
                 this.addMessage('ai', 'Üzgünüm, bir hata oluştu: ' + response.error);
                 return;
             }
             
-            // Yanıta göre mesaj formatı
-            if (response.type === 'text' || !response.type) {
-                this.addMessage('ai', response.content || response.text);
-            } else if (response.type === 'orderStatus') {
-                let content = `${response.content}\n\n`;
-                response.data.forEach(order => {
-                    content += `- ${order.id} (${order.customer}): ${order.status}, İlerleme: %${order.progress}\n`;
-                });
-                this.addMessage('ai', content);
-            } else if (response.type === 'materialStatus') {
-                let content = `${response.content}\n\n`;
-                response.data.forEach(material => {
-                    content += `- ${material.code} (${material.name}): Stok ${material.stock}, İhtiyaç: ${material.required}\n`;
-                });
-                this.addMessage('ai', content);
-            } else if (response.type === 'technicalInfo') {
-                let content = `${response.content}\n\n`;
-                content += `Tipler: ${response.data.types.join(', ')}\n`;
-                content += `Gerilim: ${response.data.voltage}\n`;
-                content += `Akım: ${response.data.current}\n`;
-                content += `Kısa Devre: ${response.data.shortCircuit}`;
-                this.addMessage('ai', content);
-            } else {
-                this.addMessage('ai', JSON.stringify(response));
-            }
+            // Yanıta göre mesaj ekle
+            const content = response.content || response.text || 'Yanıt alınamadı.';
+            this.addMessage('ai', content);
         } catch (error) {
-            log.error('Mesaj gönderilirken hata oluştu', error);
+            console.error('Mesaj gönderilirken hata oluştu', error);
             this.addMessage('ai', 'Üzgünüm, bir sorun oluştu. Lütfen tekrar deneyin.');
         }
     }
@@ -107,14 +99,8 @@ class Chatbot {
         // Mesajı DOM'a ekle
         const messageDiv = document.createElement('div');
         messageDiv.className = `chat-message ${type === 'user' ? 'user-message' : 'ai-message'}`;
+        messageDiv.textContent = text;
         
-        // Mesaj metnini formatlama (basit markdown benzeri)
-        let formattedText = text;
-        
-        // Satır sonlarını <br> yap
-        formattedText = formattedText.replace(/\n/g, '<br>');
-        
-        messageDiv.innerHTML = formattedText;
         this.chatMessages.appendChild(messageDiv);
         
         // Sohbeti en alta kaydır
@@ -140,19 +126,4 @@ class Chatbot {
 // Global olarak chatbot nesnesini oluştur
 window.chatbot = new Chatbot();
 
-// Chatbot toggle fonksiyonu
-function toggleChatbot() {
-    log.info('Chatbot açılıyor');
-    const chatModal = new bootstrap.Modal(document.getElementById('aiChatModal'));
-    chatModal.show();
-    
-    // Bildirim işaretini temizle
-    if (window.chatbot) {
-        window.chatbot.clearNotifications();
-    }
-}
-
-// Global olarak toggleChatbot fonksiyonunu ekle
-window.toggleChatbot = toggleChatbot;
-
-log.info('Chatbot modülü başarıyla yüklendi');
+console.log('Chatbot modülü başarıyla yüklendi');

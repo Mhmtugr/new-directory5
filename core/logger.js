@@ -1,6 +1,5 @@
 /**
  * Logger Modülü
- * Uygulama içindeki tüm loglama işlemlerini yönetir
  */
 
 // Global appConfig'den ayarları al
@@ -41,6 +40,8 @@ class Logger {
 }
 
 // Global logger'ı ata
-window.logger = (module) => new Logger(module);
+window.logger = function(module) {
+    return new Logger(module);
+}
 
 console.log("[Logger] Logger modülü başarıyla yüklendi");

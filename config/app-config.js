@@ -1,13 +1,12 @@
 /**
  * Uygulama Yapılandırma Dosyası
- * Tüm uygulama çapında kullanılan yapılandırma değişkenlerini içerir
  */
 
 // App configuration 
 const appConfig = {
     appName: "MehmetEndüstriyelTakip",
     version: "1.0.0",
-    environment: "development", // development, testing, production
+    environment: "development",
     apiUrl: "https://api.mehmetendüstriyel.com",
     useLocalStorage: true,
     useDemoMode: true,

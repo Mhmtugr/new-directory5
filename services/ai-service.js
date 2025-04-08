@@ -1,10 +1,6 @@
 /**
  * AI Servisi
- * Yapay zeka ile ilgili tüm istekleri ve işlevleri yöneten servis
  */
-
-// Logger oluştur
-const log = window.logger ? window.logger('AIService') : console;
 
 // AI Servisi sınıfı
 class AIService {
@@ -17,42 +13,28 @@ class AIService {
     }
     
     init() {
-        log.info('AI Servisi başlatılıyor...');
-        
-        // Gelişmiş AI modülü kontrolü
-        if (window.advancedAI) {
-            this.advancedAI = window.advancedAI;
-            log.info('Gelişmiş AI modülü bulundu ve entegre edildi');
-        } else {
-            log.warn('Gelişmiş AI modülü bulunamadı, basit AI kullanılacak');
-        }
-        
+        console.log('AI Servisi başlatılıyor...');
         this.initialized = true;
     }
     
     async query(message, options = {}) {
         if (!this.initialized) {
-            log.warn('AI Servisi başlatılmadı');
+            console.warn('AI Servisi başlatılmadı');
             return { error: 'AI Servisi başlatılmadı' };
         }
         
         try {
-            log.info('AI sorgulama:', message);
+            console.log('AI sorgulama:', message);
             
-            // Gelişmiş AI varsa onu kullan
-            if (this.advancedAI) {
-                return await this.advancedAI.processQuery(message, options);
-            }
-            
-            // Basit yanıt oluştur
-            return this.generateSimpleResponse(message);
+            // Demo yanıt
+            return this.generateDemoResponse(message);
         } catch (error) {
-            log.error('AI sorgulaması sırasında hata', error);
+            console.error('AI sorgulaması sırasında hata', error);
             return { error: 'AI sorgulaması sırasında bir hata oluştu' };
         }
     }
     
-    generateSimpleResponse(message) {
+    generateDemoResponse(message) {
         const lowerMessage = message.toLowerCase();
         
         if (lowerMessage.includes('merhaba') || lowerMessage.includes('selam')) {
@@ -76,31 +58,16 @@ class AIService {
             };
         }
         
+        if (lowerMessage.includes('hücre') || lowerMessage.includes('rm 36')) {
+            return {
+                type: 'text',
+                content: 'RM 36 hücre tipleri: CB (Kesicili), LB (Yük Ayırıcılı), FL (Sigortalı). Daha detaylı bilgi için teknik dokümanlar bölümüne bakabilirsiniz.'
+            };
+        }
+        
         return { 
             type: 'text',
-            content: 'Üzgünüm, sorunuzu anlamadım. Lütfen daha açık bir şekilde ifade eder misiniz?'
-        };
-    }
-    
-    analyzeProductionData(data) {
-        if (this.advancedAI) {
-            return this.advancedAI.analyzeProduction(data);
-        }
-        
-        return { 
-            insights: ['Veri analizi için gelişmiş AI modülü gereklidir'],
-            recommendations: ['Gelişmiş AI modülünü etkinleştirin']
-        };
-    }
-    
-    predictMaterialRequirements(orders, inventory) {
-        if (this.advancedAI) {
-            return this.advancedAI.predictMaterialNeeds(orders, inventory);
-        }
-        
-        return {
-            materials: [],
-            message: 'Tahmin için gelişmiş AI modülü gereklidir'
+            content: 'Üzgünüm, sorunuzu anlamadım. Daha açık bir şekilde ifade edebilir misiniz?'
         };
     }
 }
@@ -108,4 +75,4 @@ class AIService {
 // Global olarak ai-service'i ata
 window.aiService = new AIService();
 
-log.info('AI Servisi başarıyla yüklendi');
+console.log('AI Servisi başarıyla yüklendi');
