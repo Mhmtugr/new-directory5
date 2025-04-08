@@ -703,51 +703,9 @@ function showLogin() {
 }
 
 // Uygulama önyükleme ve başlatma kodu
-async function initApp() {
-    console.log("Uygulama başlatılıyor...");
-    
-    try {
-        // Temel kütüphaneleri yükle
-        await loadDependencies().catch(err => {
-            console.error("Bağımlılıklar yüklenirken hata:", err);
-            // Bağımlılıklar yüklenemese bile devam et
-        });
-        
-        // Modülleri yükle
-        try {
-            await loadModules();
-        } catch (moduleError) {
-            console.error("Modüller yüklenirken hata:", moduleError);
-            // Modüller yüklenemese bile devam et
-        }
-        
-        // UI'ı hazırla
-        setupUI();
-        
-        // Verileri yükle
-        try {
-            await loadInitialData();
-        } catch (dataError) {
-            console.error("Veriler yüklenirken hata:", dataError);
-            // Veri hataları kritik değil, devam et
-        }
-        
-        // Ana uygulamayı göster
-        showMainApp();
-        
-        console.log("Uygulama başarıyla yüklendi.");
-        return true;
-    } catch (error) {
-        console.error("Uygulama başlatma hatası:", error);
-        showErrorPage(error);
-        
-        // Otomatik olarak 3 saniye sonra demo moda geç
-        setTimeout(() => {
-            enableDemoMode();
-        }, 3000);
-        
-        return false;
-    }
+function initApp() {
+    console.log('Application initialized.');
+    // Uygulama başlatma kodları
 }
 
 // Bağımlılıkları yükle

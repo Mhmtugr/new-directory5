@@ -788,11 +788,11 @@ let mockFirebase = {
         try {
             console.log("Mock Firebase initialized with config:", config);
             mockFirebase.apps.push({});
-            console.log('Mock Firebase initialized.');
-            return {};
         } catch (error) {
             console.error('Mock Firebase initialization failed:', error);
         }
+        console.log('Mock Firebase initialized.');
+        return {};
     },
     
     app: () => ({})

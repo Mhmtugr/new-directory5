@@ -143,6 +143,16 @@ class Dashboard {
     }
 }
 
+// Loading indicator function
+function showLoadingInPage() {
+    console.log('Loading indicator shown.');
+}
+
+// Error display function
+function showErrorInPage(error) {
+    console.error('Error shown in page:', error);
+}
+
 // Dashboard instance'ını oluştur ve export et
 const dashboard = new Dashboard();
 

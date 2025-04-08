@@ -3,7 +3,8 @@
  * Uygulama için loglama işlevleri
  */
 
-import AppConfig from '../config/app-config.js';
+import appConfig from '../config/app-config.js'; // 'default' yerine doğru yapılandırma
+console.log('Logger initialized with config:', appConfig);
 
 // Log seviyeleri
 const LOG_LEVELS = {
@@ -21,8 +22,8 @@ class Logger {
         this.maxLogSize = 1000; // Maksimum log sayısı
         
         // Konfigürasyondaki log seviyesini ayarla
-        if (AppConfig && AppConfig.logLevel) {
-            this.setLogLevel(AppConfig.logLevel);
+        if (appConfig && appConfig.logLevel) {
+            this.setLogLevel(appConfig.logLevel);
         }
     }
     
@@ -154,11 +155,11 @@ class Logger {
         // Örneğin: Sentry, LogRocket, Firebase Analytics vb.
         try {
             // Konfigürasyon kontrolü
-            if (AppConfig && AppConfig.remoteLogging && AppConfig.remoteLogging.enabled) {
+            if (appConfig && appConfig.remoteLogging && appConfig.remoteLogging.enabled) {
                 // Hata loglarını her zaman, diğerlerini yapılandırmaya göre gönder
-                if (logEntry.level === 'ERROR' || AppConfig.remoteLogging.logLevel <= LOG_LEVELS[logEntry.level]) {
+                if (logEntry.level === 'ERROR' || appConfig.remoteLogging.logLevel <= LOG_LEVELS[logEntry.level]) {
                     // Burada örnek bir uzak sunucuya POST işlemi yapılabilir
-                    // fetch(AppConfig.remoteLogging.endpoint, {
+                    // fetch(appConfig.remoteLogging.endpoint, {
                     //     method: 'POST',
                     //     headers: { 'Content-Type': 'application/json' },
                     //     body: JSON.stringify(logEntry)
@@ -226,4 +227,4 @@ export default {
     searchLogs(searchTerm) {
         return instance.searchLogs(searchTerm);
     }
-}; 
+};

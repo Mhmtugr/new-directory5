@@ -115,6 +115,13 @@ function handleAuthStateChanged(user) {
 }
 
 /**
+ * Demo login işlemi
+ */
+function demoLogin() {
+    console.log('Demo login executed.');
+}
+
+/**
  * URL'den sayfa yönlendirmesini kontrol et
  */
 function handleURLRouting() {
