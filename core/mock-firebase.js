@@ -1,4 +1,4 @@
- /**
+/**
  * mock-firebase.js
  * Demo modu için sahte Firebase implementasyonu
  */
@@ -785,9 +785,14 @@ let mockFirebase = {
     
     // Firebase App
     initializeApp: (config) => {
-        console.log("Mock Firebase initialized with config:", config);
-        mockFirebase.apps.push({});
-        return {};
+        try {
+            console.log("Mock Firebase initialized with config:", config);
+            mockFirebase.apps.push({});
+            console.log('Mock Firebase initialized.');
+            return {};
+        } catch (error) {
+            console.error('Mock Firebase initialization failed:', error);
+        }
     },
     
     app: () => ({})

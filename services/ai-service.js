@@ -250,4 +250,9 @@ if (window.AIService) {
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = { default: AIService };
     }
-} 
+}
+
+// AI Service initialization function
+function initializeAI() {
+    console.log('AI Service initialized.');
+}
