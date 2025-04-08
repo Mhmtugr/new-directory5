@@ -20,7 +20,6 @@ window.loadScript = loadScript;
 window.enableDemoMode = enableDemoMode;
 window.showMainApp = showMainApp;
 window.showLogin = showLogin;
-window.initApp = initApp;
 
 // Global değişkenler ve yapılandırma
 const CONFIG = {
@@ -935,3 +934,292 @@ function loadScript(url) {
         }
     });
 }
+
+/**
+ * Ana Uygulama Modülü
+ * Uygulamanın temel fonksiyonlarını ve başlatma rutinlerini içerir
+ */
+
+// Logger oluştur
+const log = window.logger ? window.logger('App') : console;
+
+// Uygulama durumu
+const appState = {
+    initialized: false,
+    user: null,
+    authenticated: false,
+    demoMode: false,
+    currentModule: 'dashboard'
+};
+
+// Ana uygulama başlatma fonksiyonu
+function initApp() {
+    log.info('Uygulama başlatılıyor...');
+    
+    try {
+        // Demo modu kontrolü
+        if (window.appConfig && window.appConfig.useDemoMode) {
+            appState.demoMode = true;
+            log.info('Demo modu etkin');
+        }
+        
+        // Temaları başlat
+        setupTheme();
+        
+        // Event Listeners
+        setupEventListeners();
+        
+        // Dashboard grafiklerini yükle
+        if (typeof setupDashboardCharts === 'function') {
+            setupDashboardCharts();
+        }
+        
+        // Uygulama durumunu güncelle
+        appState.initialized = true;
+        
+        log.info('Uygulama başarıyla başlatıldı!');
+        
+        // Global event
+        if (window.eventBus) {
+            window.eventBus.emit('app:initialized', appState);
+        }
+    } catch (error) {
+        log.error('Uygulama başlatılırken hata oluştu', error);
+    }
+}
+
+// Tema ayarları
+function setupTheme() {
+    // Varsayılan tema ayarları
+    const defaultTheme = localStorage.getItem('app_theme') || 'light';
+    document.body.setAttribute('data-theme', defaultTheme);
+}
+
+// Event listener'ları ayarla
+function setupEventListeners() {
+    // Tab değişikliği
+    document.querySelectorAll('.nav-link').forEach(el => {
+        el.addEventListener('click', (e) => {
+            const targetTab = e.target.getAttribute('href').replace('#', '');
+            appState.currentModule = targetTab;
+            
+            if (window.eventBus) {
+                window.eventBus.emit('module:changed', targetTab);
+            }
+        });
+    });
+    
+    // Chatbot butonunu etkinleştir
+    const chatbotBtn = document.getElementById('ai-chatbot-btn');
+    if (chatbotBtn) {
+        chatbotBtn.addEventListener('click', toggleChatbot);
+    }
+}
+
+// Dashboard grafiklerini ayarla
+function setupDashboardCharts() {
+    try {
+        // Üretim durumu grafiği
+        const productionChart = new Chart(
+            document.getElementById('productionChart'),
+            {
+                type: 'line',
+                data: {
+                    labels: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran'],
+                    datasets: [{
+                        label: 'Tamamlanan',
+                        data: [12, 19, 15, 20, 18, 15],
+                        borderColor: '#27ae60',
+                        backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                        tension: 0.4
+                    }, {
+                        label: 'Planlandı',
+                        data: [15, 22, 18, 24, 22, 20],
+                        borderColor: '#3498db',
+                        backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        );
+        
+        // Hücre tipi dağılımı grafiği
+        const cellTypeChart = new Chart(
+            document.getElementById('cellTypeChart'),
+            {
+                type: 'doughnut',
+                data: {
+                    labels: ['RM 36 CB', 'RM 36 LB', 'RM 36 FL', 'RMU'],
+                    datasets: [{
+                        label: 'Hücre Tipi',
+                        data: [45, 25, 20, 10],
+                        backgroundColor: [
+                            'rgba(52, 152, 219, 0.7)',
+                            'rgba(155, 89, 182, 0.7)',
+                            'rgba(52, 73, 94, 0.7)',
+                            'rgba(22, 160, 133, 0.7)'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                        }
+                    }
+                }
+            }
+        );
+        
+        // Diğer tüm grafikleri başlat
+        setupOtherCharts();
+        
+        log.info('Dashboard grafikleri başarıyla oluşturuldu');
+    } catch (error) {
+        log.error('Grafikler oluşturulurken hata oluştu', error);
+    }
+}
+
+// Diğer grafikleri ayarla
+function setupOtherCharts() {
+    try {
+        // Malzeme tahmin grafiği
+        if (document.getElementById('materialForecastChart')) {
+            new Chart(
+                document.getElementById('materialForecastChart'),
+                {
+                    type: 'bar',
+                    data: {
+                        labels: ['Siemens Röle', 'Akım Trafosu', 'Kablo Başlığı', 'Bara', 'Kesici', 'Ayırıcı'],
+                        datasets: [{
+                            label: 'Mevcut Stok',
+                            data: [2, 3, 12, 25, 8, 10],
+                            backgroundColor: 'rgba(52, 152, 219, 0.5)'
+                        }, {
+                            label: 'Tahmini İhtiyaç',
+                            data: [8, 5, 15, 18, 12, 14],
+                            backgroundColor: 'rgba(231, 76, 60, 0.5)'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                }
+            );
+        }
+        
+        // Kapasite planı grafiği
+        if (document.getElementById('capacityChart')) {
+            new Chart(
+                document.getElementById('capacityChart'),
+                {
+                    type: 'line',
+                    data: {
+                        labels: ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma'],
+                        datasets: [{
+                            label: 'Kapasite',
+                            data: [85, 90, 95, 80, 70],
+                            borderColor: '#3498db',
+                            fill: false,
+                            tension: 0.1
+                        }, {
+                            label: 'Kullanım',
+                            data: [65, 75, 90, 60, 50],
+                            borderColor: '#e74c3c',
+                            fill: false,
+                            tension: 0.1
+                        }]
+                    }
+                }
+            );
+        }
+        
+        // Teslimat tahmini grafiği
+        if (document.getElementById('deliveryChart')) {
+            new Chart(
+                document.getElementById('deliveryChart'),
+                {
+                    type: 'bar',
+                    data: {
+                        labels: ['Bu Hafta', 'Gelecek Hafta', '3. Hafta', '4. Hafta'],
+                        datasets: [{
+                            label: 'Planlanan Teslimatlar',
+                            data: [2, 4, 5, 3],
+                            backgroundColor: 'rgba(52, 152, 219, 0.7)'
+                        }]
+                    }
+                }
+            );
+        }
+        
+        // Verimlilik grafiği
+        if (document.getElementById('efficiencyChart')) {
+            new Chart(
+                document.getElementById('efficiencyChart'),
+                {
+                    type: 'line',
+                    data: {
+                        labels: ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran'],
+                        datasets: [{
+                            label: 'Verimlilik (%)',
+                            data: [75, 78, 80, 79, 82, 85],
+                            borderColor: '#27ae60',
+                            backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                            fill: true
+                        }]
+                    }
+                }
+            );
+        }
+    } catch (error) {
+        log.error('Diğer grafikler oluşturulurken hata oluştu', error);
+    }
+}
+
+// Demo login
+function demoLogin() {
+    log.info('Demo hesabı ile giriş yapılıyor...');
+    appState.user = {
+        id: 'demo-user-001',
+        name: 'Demo Kullanıcı',
+        email: 'demo@example.com',
+        role: 'Yönetici',
+        department: 'Yönetim'
+    };
+    appState.authenticated = true;
+    
+    if (window.eventBus) {
+        window.eventBus.emit('auth:login', appState.user);
+    }
+    
+    return { success: true, user: appState.user };
+}
+
+// Fonksiyonları global scope'a ekle
+window.initApp = initApp;
+window.setupDashboardCharts = setupDashboardCharts;
+window.toggleChatbot = toggleChatbot || function() {};
+window.demoLogin = demoLogin;
+
+// İnit fonksiyonunu document yüklendiğinde çağır
+document.addEventListener('DOMContentLoaded', function() {
+    // Burada initApp çağrılmıyor, DOMContentLoaded event handler'ında çağrılacak
+    log.info('App.js yüklendi. initApp document ready event\'inde çağrılacak');
+});

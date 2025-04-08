@@ -1,300 +1,158 @@
 /**
- * chatbot.js
- * Yapay zeka asistanı işlevleri
+ * Chatbot Modülü
+ * Yapay zeka asistanı ile iletişim arayüzü sağlar
  */
 
-(function() {
-    console.log('Chatbot module loaded.');
+// Logger oluştur
+const log = window.logger ? window.logger('Chatbot') : console;
 
-    var AppConfig = window.AppConfig;
-    var AdvancedAI = window.AdvancedAI;
-    var AIIntegrationModule = window.AIIntegrationModule;
-    var Logger = window.Logger;
-    var aiService = window.aiService;
-
-    function Chatbot() {
-        this.container = document.querySelector('.ai-chatbot-container');
-        this.messagesContainer = this.container.querySelector('.chat-messages');
-        this.input = this.container.querySelector('input');
-        this.sendButton = this.container.querySelector('.send-message');
-        this.closeButton = this.container.querySelector('.close-chat');
-        this.chatbotButton = document.querySelector('.ai-chatbot-btn');
-        this.isOpen = false;
+// Chatbot sınıfı
+class Chatbot {
+    constructor() {
+        this.messages = [];
+        this.initialized = false;
+        this.aiService = window.aiService;
+        
+        this.init();
     }
-
-    Chatbot.prototype.initialize = function() {
-        this.setupEventListeners();
-        this.addWelcomeMessage();
-    };
-
-    Chatbot.prototype.setupEventListeners = function() {
-        var self = this;
-
-        // Chatbot butonuna tıklama
-        this.chatbotButton.addEventListener('click', function() {
-            self.toggleChat();
-        });
-
-        // Kapatma butonuna tıklama
-        this.closeButton.addEventListener('click', function() {
-            self.closeChat();
-        });
-
-        // Mesaj gönderme
-        this.sendButton.addEventListener('click', function() {
-            self.sendMessage();
-        });
-        this.input.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') self.sendMessage();
-        });
-    };
-
-    Chatbot.prototype.toggleChat = function() {
-        this.isOpen = !this.isOpen;
-        this.container.style.display = this.isOpen ? 'flex' : 'none';
-        if (this.isOpen) {
-            this.input.focus();
+    
+    init() {
+        log.info('Chatbot başlatılıyor...');
+        
+        // DOM elementleri
+        this.chatModal = document.getElementById('aiChatModal');
+        this.chatMessages = document.getElementById('chatMessages');
+        this.chatInput = document.getElementById('aiChatInput');
+        this.sendButton = document.getElementById('sendChatBtn');
+        
+        // Event listeners
+        if (this.sendButton) {
+            this.sendButton.addEventListener('click', () => this.sendMessage());
         }
-    };
-
-    Chatbot.prototype.closeChat = function() {
-        this.isOpen = false;
-        this.container.style.display = 'none';
-    };
-
-    Chatbot.prototype.sendMessage = function() {
-        var self = this;
-        var message = this.input.value.trim();
+        
+        if (this.chatInput) {
+            this.chatInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    this.sendMessage();
+                }
+            });
+        }
+        
+        // Hoşgeldin mesajı ekle
+        this.addMessage('ai', 'Merhaba! Ben MehmetEndüstriyelTakip yapay zeka asistanı. Size nasıl yardımcı olabilirim?');
+        
+        this.initialized = true;
+        log.info('Chatbot başarıyla başlatıldı');
+    }
+    
+    async sendMessage() {
+        if (!this.initialized || !this.chatInput || !this.aiService) {
+            log.error('Chatbot henüz hazır değil');
+            return;
+        }
+        
+        const message = this.chatInput.value.trim();
         if (!message) return;
-
+        
         // Kullanıcı mesajını ekle
-        this.addMessage(message, 'user');
-        this.input.value = '';
-
-        aiService.processQuery(message).then(function(response) {
-            // AI yanıtını ekle
-            self.addMessage(response, 'assistant');
-        }).catch(function(error) {
-            console.error('Chatbot error:', error);
-            self.addMessage('Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin.', 'assistant');
-        });
-    };
-
-    Chatbot.prototype.addMessage = function(content, type) {
-        var messageElement = document.createElement('div');
-        messageElement.className = 'chat-message ' + type;
-
-        var time = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-
-        messageElement.innerHTML = `
-            <div class="message-content">${content}</div>
-            <div class="message-time">${time}</div>
-        `;
-
-        this.messagesContainer.appendChild(messageElement);
-        this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
-    };
-
-    Chatbot.prototype.addWelcomeMessage = function() {
-        var welcomeMessage = `
-            Merhaba! Ben MehmetEndüstriyel'in yapay zeka asistanıyım. Size nasıl yardımcı olabilirim?
+        this.addMessage('user', message);
+        this.chatInput.value = '';
+        
+        try {
+            // Yapay zeka yanıtını al
+            const response = await this.aiService.query(message);
             
-            Örnek sorular:
-            - Sipariş durumunu nasıl öğrenebilirim?
-            - Üretim planı nedir?
-            - Stok durumu nasıl?
-        `;
-        this.addMessage(welcomeMessage, 'assistant');
-    };
-
-    var chatbot = new Chatbot();
-    window.toggleChatbot = function() {
-        chatbot.toggleChat();
-    };
-    window.chatbot = chatbot;
-
-    // Hoşgeldin mesajı göster
-    function showWelcomeMessage() {
-        var chatBody = document.getElementById('chatbot-body');
-        if (!chatBody) return;
-
-        var welcomeMessage = document.createElement('div');
-        welcomeMessage.className = 'chat-message bot';
-        welcomeMessage.innerHTML = `
-            <p>Merhaba! Ben Mehmet Endüstriyel Takip yapay zeka asistanıyım. Size nasıl yardımcı olabilirim?</p>
-            <p>Örnek sorular:</p>
-            <ul class="quick-questions">
-                <li><a href="#" class="quick-question" data-question="Üretimdeki siparişlerin durumu nedir?">Üretimdeki siparişlerin durumu nedir?</a></li>
-                <li><a href="#" class="quick-question" data-question="Hangi malzemelerde kritik eksiklik var?">Hangi malzemelerde kritik eksiklik var?</a></li>
-                <li><a href="#" class="quick-question" data-question="CB hücre tipi için üretim süresi tahmini nedir?">CB hücre tipi için üretim süresi tahmini nedir?</a></li>
-                <li><a href="#" class="quick-question" data-question="Üretimde gecikme riski olan siparişleri göster">Üretimde gecikme riski olan siparişleri göster</a></li>
-            </ul>
-        `;
-        chatBody.appendChild(welcomeMessage);
-
-        // Hızlı soru bağlantılarına tıklama olayları ekle
-        welcomeMessage.querySelectorAll('.quick-question').forEach(function(link) {
-            link.addEventListener('click', function(e) {
-                e.preventDefault();
-                var question = this.getAttribute('data-question');
-                document.getElementById('chatbot-input').value = question;
-                sendChatMessage();
-            });
-        });
-    }
-
-    // Mesaj gönderme
-    function sendChatMessage() {
-        var input = document.getElementById('chatbot-input');
-        var message = input.value.trim();
-
-        if (message === '') return;
-
-        // Kullanıcı mesajını ekle
-        var chatBody = document.getElementById('chatbot-body');
-        var userMessageElement = document.createElement('div');
-        userMessageElement.className = 'chat-message user';
-        userMessageElement.textContent = message;
-        chatBody.appendChild(userMessageElement);
-
-        // Input'u temizle
-        input.value = '';
-
-        // Yanıt oluşturma (yapay zeka ile entegrasyon)
-        generateBotResponse(message, chatBody);
-
-        // Scroll to bottom
-        chatBody.scrollTop = chatBody.scrollHeight;
-    }
-
-    // Yapay zeka yanıtı oluşturma
-    function generateBotResponse(message, chatBody) {
-        var loadingElement = document.createElement('div');
-        loadingElement.className = 'chat-message bot';
-        loadingElement.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Yanıt hazırlanıyor...';
-        chatBody.appendChild(loadingElement);
-
-        var chatHistory = getChatHistory();
-
-        collectContextData(message).then(function(context) {
-            Logger.info("Chatbot bağlam verileri toplandı", {
-                messageLength: message.length,
-                contextLength: context.length,
-                historyLength: chatHistory.length
-            });
-
-            var botResponse = '';
-            var responseSource = '';
-
-            var tryDeepSeek = function() {
-                if (window.AIIntegrationModule && typeof window.AIIntegrationModule.askDeepSeek === 'function') {
-                    Logger.info("DeepSeek AI modeli kullanılıyor");
-
-                    return window.AIIntegrationModule.askDeepSeek(message, context).then(function(response) {
-                        botResponse = response;
-                        responseSource = 'deepseek';
-                        Logger.info("DeepSeek yanıtı alındı", { responseLength: botResponse.length });
-                    });
-                } else {
-                    Logger.warn("DeepSeek AI modülü bulunamadı veya askDeepSeek fonksiyonu yok");
-                    return Promise.reject(new Error("DeepSeek modülü bulunamadı"));
-                }
-            };
-
-            var tryOpenAI = function() {
-                if (window.AIIntegrationModule && typeof window.AIIntegrationModule.askOpenAI === 'function') {
-                    Logger.info("OpenAI modeli kullanılıyor");
-
-                    return window.AIIntegrationModule.askOpenAI(message, context).then(function(response) {
-                        botResponse = response;
-                        responseSource = 'openai';
-                        Logger.info("OpenAI yanıtı alındı", { responseLength: botResponse.length });
-                    });
-                } else {
-                    Logger.warn("OpenAI modülü bulunamadı veya askOpenAI fonksiyonu yok");
-                    return Promise.reject(new Error("OpenAI modülü bulunamadı"));
-                }
-            };
-
-            var tryAdvancedAI = function() {
-                if (typeof AdvancedAI !== 'undefined' && typeof AdvancedAI.askQuestion === 'function') {
-                    Logger.info("AdvancedAI modülü kullanılıyor");
-
-                    return AdvancedAI.askQuestion(message, context).then(function(response) {
-                        botResponse = response;
-                        responseSource = 'advanced';
-                        Logger.info("AdvancedAI yanıtı alındı", { responseLength: botResponse.length });
-                    });
-                } else {
-                    Logger.warn("AdvancedAI modülü bulunamadı veya askQuestion fonksiyonu yok");
-                    return Promise.reject(new Error("AdvancedAI modülü bulunamadı"));
-                }
-            };
-
-            var tryDemoResponse = function() {
-                botResponse = generateDemoResponse(message);
-                responseSource = 'demo';
-                Logger.info("Demo yanıtı oluşturuldu", { responseLength: botResponse.length });
-                return Promise.resolve();
-            };
-
-            tryDeepSeek().catch(function() {
-                return tryOpenAI();
-            }).catch(function() {
-                return tryAdvancedAI();
-            }).catch(function() {
-                return tryDemoResponse();
-            }).finally(function() {
-                chatBody.removeChild(loadingElement);
-
-                botResponse = botResponse || "Üzgünüm, bir yanıt oluşturulamadı. Lütfen daha sonra tekrar deneyin.";
-
-                var messageClass = 'chat-message bot';
-                if (responseSource === 'deepseek') {
-                    messageClass += ' deepseek-response';
-                } else if (responseSource === 'openai') {
-                    messageClass += ' openai-response';
-                } else if (responseSource === 'demo') {
-                    messageClass += ' demo-response';
-                }
-
-                botResponse = formatResponse(botResponse);
-
-                var timestamp = new Date().toLocaleTimeString();
-                var botMessageElement = document.createElement('div');
-                botMessageElement.className = messageClass;
-                botMessageElement.innerHTML = `<span class="message-content">${botResponse}</span><span class="message-time">${timestamp}</span>`;
-                chatBody.appendChild(botMessageElement);
-
-                chatBody.scrollTop = chatBody.scrollHeight;
-
-                saveChatHistory({
-                    role: 'assistant',
-                    content: botResponse,
-                    timestamp: new Date().toISOString(),
-                    source: responseSource
+            if (response.error) {
+                this.addMessage('ai', 'Üzgünüm, bir hata oluştu: ' + response.error);
+                return;
+            }
+            
+            // Yanıta göre mesaj formatı
+            if (response.type === 'text' || !response.type) {
+                this.addMessage('ai', response.content || response.text);
+            } else if (response.type === 'orderStatus') {
+                let content = `${response.content}\n\n`;
+                response.data.forEach(order => {
+                    content += `- ${order.id} (${order.customer}): ${order.status}, İlerleme: %${order.progress}\n`;
                 });
-
-                processVisualizationRequests(message, botResponse, botMessageElement);
-
-                if (botResponse.length > 50) {
-                    suggestActionsBasedOnResponse(message, botResponse, chatBody);
-                }
-            });
-        }).catch(function(error) {
-            Logger.error("Bot yanıtı oluşturulurken hata", { error: error.message });
-
-            var errorElement = document.createElement('div');
-            errorElement.className = 'chat-message bot error';
-            errorElement.innerHTML = `<span class="message-content">Üzgünüm, bir hata oluştu: ${error.message}</span>`;
-            chatBody.appendChild(errorElement);
-
-            chatBody.scrollTop = chatBody.scrollHeight;
-        });
+                this.addMessage('ai', content);
+            } else if (response.type === 'materialStatus') {
+                let content = `${response.content}\n\n`;
+                response.data.forEach(material => {
+                    content += `- ${material.code} (${material.name}): Stok ${material.stock}, İhtiyaç: ${material.required}\n`;
+                });
+                this.addMessage('ai', content);
+            } else if (response.type === 'technicalInfo') {
+                let content = `${response.content}\n\n`;
+                content += `Tipler: ${response.data.types.join(', ')}\n`;
+                content += `Gerilim: ${response.data.voltage}\n`;
+                content += `Akım: ${response.data.current}\n`;
+                content += `Kısa Devre: ${response.data.shortCircuit}`;
+                this.addMessage('ai', content);
+            } else {
+                this.addMessage('ai', JSON.stringify(response));
+            }
+        } catch (error) {
+            log.error('Mesaj gönderilirken hata oluştu', error);
+            this.addMessage('ai', 'Üzgünüm, bir sorun oluştu. Lütfen tekrar deneyin.');
+        }
     }
+    
+    addMessage(type, text) {
+        if (!this.chatMessages) return;
+        
+        // Mesajı listeye ekle
+        this.messages.push({ type, text, timestamp: new Date() });
+        
+        // Mesajı DOM'a ekle
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `chat-message ${type === 'user' ? 'user-message' : 'ai-message'}`;
+        
+        // Mesaj metnini formatlama (basit markdown benzeri)
+        let formattedText = text;
+        
+        // Satır sonlarını <br> yap
+        formattedText = formattedText.replace(/\n/g, '<br>');
+        
+        messageDiv.innerHTML = formattedText;
+        this.chatMessages.appendChild(messageDiv);
+        
+        // Sohbeti en alta kaydır
+        this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+    }
+    
+    showNotification(count = 1) {
+        const badge = document.querySelector('.ai-chatbot-btn .notification-badge');
+        if (badge) {
+            badge.textContent = count;
+            badge.style.display = 'flex';
+        }
+    }
+    
+    clearNotifications() {
+        const badge = document.querySelector('.ai-chatbot-btn .notification-badge');
+        if (badge) {
+            badge.style.display = 'none';
+        }
+    }
+}
 
-    // Sayfa yüklendiğinde Chatbot UI'yi oluştur
-    document.addEventListener('DOMContentLoaded', function() {
-        createChatbotUIIfNeeded();
-    });
-})();
+// Global olarak chatbot nesnesini oluştur
+window.chatbot = new Chatbot();
+
+// Chatbot toggle fonksiyonu
+function toggleChatbot() {
+    log.info('Chatbot açılıyor');
+    const chatModal = new bootstrap.Modal(document.getElementById('aiChatModal'));
+    chatModal.show();
+    
+    // Bildirim işaretini temizle
+    if (window.chatbot) {
+        window.chatbot.clearNotifications();
+    }
+}
+
+// Global olarak toggleChatbot fonksiyonunu ekle
+window.toggleChatbot = toggleChatbot;
+
+log.info('Chatbot modülü başarıyla yüklendi');
