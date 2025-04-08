@@ -20,7 +20,7 @@ class Dashboard {
             this.addEventListeners();
             
             console.log('Dashboard başarıyla başlatıldı');
-        } catch (error) {
+            } catch (error) {
             console.error('Dashboard başlatılırken hata oluştu:', error);
         }
     }

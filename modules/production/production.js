@@ -73,20 +73,20 @@ export class Production {
             <div class="card">
                 <div class="card-body">
                     <h5 class="card-title">Üretim Planı</h5>
-                    <div class="table-responsive">
+                <div class="table-responsive">
                         <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Sipariş No</th>
-                                    <th>Müşteri</th>
+                        <thead>
+                            <tr>
+                                <th>Sipariş No</th>
+                                <th>Müşteri</th>
                                     <th>Ürün</th>
-                                    <th>Miktar</th>
+                                <th>Miktar</th>
                                     <th>Başlangıç</th>
                                     <th>Bitiş</th>
                                     <th>Durum</th>
-                                </tr>
-                            </thead>
-                            <tbody>
+                            </tr>
+                        </thead>
+                        <tbody>
                                 ${this.productionData.plan.map(item => `
                                     <tr>
                                         <td>${item.orderNumber}</td>
@@ -96,12 +96,12 @@ export class Production {
                                         <td>${new Date(item.startDate).toLocaleDateString()}</td>
                                         <td>${new Date(item.endDate).toLocaleDateString()}</td>
                                         <td><span class="badge ${this.getStatusClass(item.status)}">${item.status}</span></td>
-                                    </tr>
+                </tr>
                                 `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
+                        </tbody>
+                    </table>
                 </div>
+            </div>
             </div>
         `;
     }
@@ -114,18 +114,18 @@ export class Production {
             <div class="card">
                 <div class="card-body">
                     <h5 class="card-title">Üretim Raporları</h5>
-                    <div class="table-responsive">
+            <div class="table-responsive">
                         <table class="table">
-                            <thead>
-                                <tr>
+                    <thead>
+                        <tr>
                                     <th>Tarih</th>
                                     <th>Verimlilik</th>
                                     <th>Hedef</th>
                                     <th>Gerçekleşen</th>
                                     <th>Fark</th>
-                                </tr>
-                            </thead>
-                            <tbody>
+                        </tr>
+                    </thead>
+                    <tbody>
                                 ${this.productionData.reports.map(report => `
                                     <tr>
                                         <td>${new Date(report.date).toLocaleDateString()}</td>
@@ -135,14 +135,14 @@ export class Production {
                                         <td class="${report.difference >= 0 ? 'text-success' : 'text-danger'}">
                                             ${report.difference >= 0 ? '+' : ''}${report.difference}
                                         </td>
-                                    </tr>
+                </tr>
                                 `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
+                    </tbody>
+                </table>
                 </div>
             </div>
-        `;
+        </div>
+    `;
     }
 
     getStatusClass(status) {

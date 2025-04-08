@@ -17,7 +17,7 @@ export class Orders {
             await this.loadOrders();
             this.addEventListeners();
             console.log('Siparişler modülü başarıyla yüklendi');
-        } catch (error) {
+    } catch (error) {
             console.error('Siparişler modülü yüklenirken hata:', error);
         }
     }
@@ -104,7 +104,7 @@ export class Orders {
             const order = await apiService.getOrderDetails(orderId);
             // Düzenleme modalını göster
             console.log('Sipariş düzenleme:', order);
-        } catch (error) {
+    } catch (error) {
             console.error('Sipariş düzenlenirken hata:', error);
         }
     }
