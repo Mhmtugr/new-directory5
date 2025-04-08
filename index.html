@@ -1950,11 +1950,15 @@
             // Dashboard grafiklerini kurma
             if (typeof setupDashboardCharts === 'function') {
                 setupDashboardCharts();
+            } else {
+                console.error('setupDashboardCharts fonksiyonu bulunamadı!');
             }
             // Chatbot butonunu etkinleştir
             const chatbotBtn = document.getElementById('ai-chatbot-btn');
             if (chatbotBtn && typeof toggleChatbot === 'function') {
                 chatbotBtn.addEventListener('click', toggleChatbot);
+            } else {
+                console.error('toggleChatbot fonksiyonu bulunamadı veya chatbot butonu eksik!');
             }
             // Tooltip'i etkinleştir
             const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
