@@ -1925,46 +1925,63 @@
     <script type="module" src="core/compat-check.js"></script>
     <script type="module" src="core/firebase-config.js"></script>
     <script type="module" src="core/mock-firebase.js"></script>
-    <script type="module" src="core/app.js"></script>
-    <script type="module" src="core/main.js"></script>
     <script type="module" src="utils/event-bus.js"></script>
-    <script type="module" src="modules/dashboard/dashboard.js"></script>
-    <script type="module" src="modules/orders/orders.js"></script>
-    <script type="module" src="modules/production/production.js"></script>
-    <script type="module" src="modules/ai/chatbot.js"></script>
-    <script type="module" src="modules/ai/ai-analytics.js"></script>
-    <script type="module" src="modules/ai/ai-integration.js"></script>
     <script type="module" src="services/api-service.js"></script>
     <script type="module" src="services/erp-service.js"></script>
     <script type="module" src="services/ai-service.js"></script>
+    <script type="module" src="modules/ai/chatbot.js"></script>
+    <script type="module" src="modules/ai/ai-analytics.js"></script>
+    <script type="module" src="modules/ai/ai-integration.js"></script>
+    <script type="module" src="modules/dashboard/dashboard.js"></script>
+    <script type="module" src="modules/orders/orders.js"></script>
+    <script type="module" src="modules/production/production.js"></script>
+    <script type="module" src="core/app.js"></script>
+    <script type="module" src="core/main.js"></script>
     
     <!-- Initialization Scripts -->
-    <script type="module">
+    <script>
         document.addEventListener('DOMContentLoaded', function() {
             // Geçici demoLogin çözümü
             window.demoLogin = window.demoLogin || function() {
                 console.warn('demoLogin fonksiyonu tanımlı değil!');
             };
 
-            // Uygulama başlatma
+            // initApp fonksiyonu kontrolü
             if (typeof initApp === 'function') {
                 initApp();
             } else {
-                console.error('initApp fonksiyonu bulunamadı!');
+                console.error('initApp fonksiyonu bulunamadı! Geçici bir çözüm uygulanıyor.');
+                window.initApp = function() {
+                    console.log('initApp geçici olarak çalıştırıldı.');
+                };
+                initApp();
             }
+
             // Dashboard grafiklerini kurma
             if (typeof setupDashboardCharts === 'function') {
                 setupDashboardCharts();
             } else {
-                console.error('setupDashboardCharts fonksiyonu bulunamadı!');
+                console.error('setupDashboardCharts fonksiyonu bulunamadı! Geçici bir çözüm uygulanıyor.');
+                window.setupDashboardCharts = function() {
+                    console.log('setupDashboardCharts geçici olarak çalıştırıldı.');
+                };
+                setupDashboardCharts();
             }
+
             // Chatbot butonunu etkinleştir
             const chatbotBtn = document.getElementById('ai-chatbot-btn');
             if (chatbotBtn && typeof toggleChatbot === 'function') {
                 chatbotBtn.addEventListener('click', toggleChatbot);
             } else {
-                console.error('toggleChatbot fonksiyonu bulunamadı veya chatbot butonu eksik!');
+                console.error('toggleChatbot fonksiyonu bulunamadı veya chatbot butonu eksik! Geçici bir çözüm uygulanıyor.');
+                window.toggleChatbot = function() {
+                    console.log('toggleChatbot geçici olarak çalıştırıldı.');
+                };
+                if (chatbotBtn) {
+                    chatbotBtn.addEventListener('click', toggleChatbot);
+                }
             }
+
             // Tooltip'i etkinleştir
             const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
             tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el));
